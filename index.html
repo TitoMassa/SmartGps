@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> <!-- Optimizado para móvil -->
     <title>Smart Move Pro</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -14,96 +14,131 @@
             crossorigin=""></script>
 
     <style>
-        /* Estilos CSS */
-        body {
+        /* Estilos CSS Optimizados para Móvil */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Evitar scroll general del body */
             font-family: sans-serif;
+            background-color: #f4f4f4;
+        }
+
+        body {
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            margin: 0;
-            background-color: #f4f4f4;
         }
 
         header {
             background-color: #333;
             color: white;
-            padding: 10px 20px;
+            padding: 8px 15px; /* Más compacto */
             text-align: center;
-            flex-shrink: 0; /* Evita que el header se encoja */
+            flex-shrink: 0;
+            font-size: 1.1em;
         }
 
         main {
             display: flex;
+            flex-direction: column; /* Apilado vertical */
             flex: 1; /* Ocupa el espacio vertical restante */
-            overflow: hidden; /* Evita desbordamiento */
-            padding: 10px;
-            gap: 10px; /* Espacio entre controles y mapa */
+            overflow: hidden; /* Contiene el scroll interno */
+           /* No gap aquí, el espaciado se maneja con márgenes si es necesario */
+           padding: 5px; /* Padding reducido */
         }
 
-        #controls {
-            /* Reducimos el ancho de los controles para dar más espacio al mapa */
-            width: 300px; /* Antes era 350px */
-            flex-shrink: 0; /* Evita que los controles se encojan */
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            padding: 15px;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow-y: auto; /* Scroll si el contenido es largo */
-        }
-
+        /* Contenedor del Mapa Arriba */
         #map-container {
-            flex: 1; /* Ocupa todo el espacio horizontal restante */
+           /* flex: 1; */ /* Quitado para usar altura fija */
+            height: 50vh; /* Altura fija: 50% de la ventana */
             display: flex;
             flex-direction: column;
             background-color: #fff;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 10px; /* Espacio antes de los controles */
+            flex-shrink: 0; /* No encoger el mapa */
         }
 
-         #map-header { /* Añadido para un título opcional sobre el mapa */
-             padding: 10px;
+        #map-header {
+             padding: 8px; /* Reducido */
              background-color: #eee;
              border-bottom: 1px solid #ccc;
              border-radius: 8px 8px 0 0;
              font-weight: bold;
-             flex-shrink: 0; /* Evita que se encoja */
-         }
-
-        #map {
-            flex: 1; /* Ocupa todo el espacio vertical restante dentro de su contenedor */
-            border-radius: 0 0 8px 8px; /* Ajusta bordes inferiores */
-             cursor: crosshair; /* Indica que se puede hacer clic para añadir puntos */
+             font-size: 0.9em;
+             text-align: center;
+             flex-shrink: 0;
         }
 
+        #map {
+            flex: 1; /* Ocupa el espacio restante en map-container */
+            border-radius: 0 0 8px 8px;
+             cursor: crosshair;
+        }
 
-        /* --- Estilos del formulario y lista (sin cambios mayores) --- */
+        /* Contenedor de Controles Debajo */
+        #controls {
+            flex: 1; /* Ocupa el espacio restante debajo del mapa */
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Espacio vertical entre secciones */
+            padding: 10px; /* Reducido */
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow-y: auto; /* Scroll SI es necesario */
+            width: auto; /* Ancho automático */
+        }
+
+        /* Secciones dentro de controles */
+        #add-stop-form, #route-info, #status-section {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+        #status-section {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+         #add-stop-form h3, #route-info h3, #status-section h3 {
+             margin-top: 0;
+             margin-bottom: 8px;
+             font-size: 1em;
+             color: #333;
+         }
+
+        /* Estilos del formulario y lista */
         #add-stop-form label,
         #route-info label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 3px; /* Reducido */
             font-weight: bold;
-            font-size: 0.9em;
+            font-size: 0.85em;
         }
+         #add-stop-form p {
+             font-size: 0.75em;
+             color: #555;
+             margin: 0 0 5px 0;
+         }
 
         #add-stop-form input[type="text"],
         #add-stop-form input[type="time"],
-        #add-stop-form input[type="number"],
+        #add-stop-form input[type="number"], /* Aunque ahora es readonly */
         #add-stop-form button,
         #startRouteBtn {
             width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
+            padding: 8px 10px; /* Ajustado */
+            margin-bottom: 8px; /* Reducido */
             box-sizing: border-box;
             border: 1px solid #ccc;
             border-radius: 4px;
+            font-size: 0.9em; /* Ligeramente más pequeño */
         }
 
-         #add-stop-form input[readonly] { /* Estilo para campos que se rellenan con clic */
+         #add-stop-form input[readonly] {
             background-color: #e9e9e9;
-            /* cursor: not-allowed; */ /* Quitamos not-allowed para que no parezca deshabilitado */
          }
 
         #add-stop-form button,
@@ -114,79 +149,74 @@
             cursor: pointer;
             transition: background-color 0.3s ease;
         }
-
         #add-stop-form button:hover,
-        #startRouteBtn:hover {
-            background-color: #0056b3;
-        }
+        #startRouteBtn:hover { background-color: #0056b3; }
+        #startRouteBtn:disabled { background-color: #cccccc; cursor: not-allowed; }
+
 
         #stops-list {
             list-style: none;
             padding: 0;
-            margin-top: 10px;
-            max-height: 200px; /* Limita altura para scroll */
+            margin: 5px 0 0 0; /* Ajustado */
+            max-height: 120px; /* Altura máxima para la lista en móvil */
             overflow-y: auto;
             border-top: 1px solid #eee;
         }
 
         #stops-list li {
-            padding: 8px 5px;
+            padding: 6px 5px; /* Reducido */
             border-bottom: 1px solid #eee;
-            font-size: 0.9em;
+            font-size: 0.85em;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-         #stops-list li span {
-            flex-grow: 1;
-            margin-right: 10px;
-         }
-
-        #stops-list button {
+         #stops-list li span { flex-grow: 1; margin-right: 8px; }
+         #stops-list li button { /* Botón eliminar */
             background-color: #dc3545;
             color: white;
             border: none;
-            padding: 3px 6px;
+            padding: 2px 5px; /* Más pequeño */
             border-radius: 3px;
             cursor: pointer;
-            font-size: 0.8em;
-        }
-         #stops-list button:hover {
-             background-color: #c82333;
+            font-size: 0.75em;
+         }
+         #stops-list li button:hover { background-color: #c82333; }
+         #stops-list li.active-stop { /* Resaltado parada actual */
+            background-color: #e0e8ff;
+             font-weight: bold;
          }
 
-
-        /* --- Estilos del display de estado (sin cambios) --- */
+        /* Display de estado */
         #status-display {
-            margin-top: 15px;
-            padding: 15px;
+            margin-top: 5px; /* Reducido */
+            padding: 10px; /* Reducido */
             border-radius: 5px;
             text-align: center;
-            font-size: 1.8em;
+            font-size: 1.5em; /* Ajustado para móvil */
             font-weight: bold;
+            line-height: 1.3; /* Mejor espaciado vertical */
         }
         #status-display.on-time { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         #status-display.late { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         #status-display.early { background-color: #cce5ff; color: #004085; border: 1px solid #b8daff; }
-        #status-display.idle { background-color: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; font-size: 1.2em; }
+        #status-display.idle { background-color: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; font-size: 1em; } /* Más pequeño en idle */
 
          #gps-status {
-             font-size: 0.8em;
+             font-size: 0.75em; /* Más pequeño */
              text-align: center;
              color: #666;
              margin-top: 5px;
+             padding: 0;
          }
 
-        .leaflet-popup-content button { /* Estilo botones dentro de popups (si se usan) */
-             margin-top: 10px;
-             padding: 5px 10px;
-             background-color: #28a745;
-             color: white;
-             border: none;
-             border-radius: 4px;
-             cursor: pointer;
+        .leaflet-popup-content button { /* Botones en popups (si se usan) */
+             padding: 4px 8px; font-size: 0.8em;
          }
-          .leaflet-popup-content button:hover { background-color: #218838; }
+         .leaflet-control-zoom { /* Opcional: hacer controles de zoom un poco más grandes para tocar */
+             transform: scale(1.1);
+             transform-origin: top left;
+         }
 
     </style>
 </head>
@@ -197,69 +227,66 @@
     </header>
 
     <main>
+        <!-- Mapa Arriba -->
+        <div id="map-container">
+             <div id="map-header">
+                Toca el mapa para fijar ubicación
+             </div>
+            <div id="map"></div>
+        </div>
+
+        <!-- Controles Debajo -->
         <div id="controls">
-            <h2>Controles de Ruta</h2>
+            <div id="status-section">
+                <h3>Estado Actual</h3>
+                <div id="status-display" class="idle">Añade paradas e inicia ruta</div>
+                 <p id="gps-status">GPS: Esperando señal...</p>
+            </div>
 
             <div id="add-stop-form">
                 <h3>Añadir Parada</h3>
-                <p style="font-size: 0.8em; color: #555;">1. Haz clic en el mapa para fijar la ubicación.</p>
-                 <p style="font-size: 0.8em; color: #555;">2. Ingresa nombre y hora.</p>
-                 <p style="font-size: 0.8em; color: #555;">3. Pulsa "Añadir Parada".</p>
+                 <!-- Instrucciones eliminadas para más espacio -->
+                <label for="stop-lat">Ubicación (Lat/Lng):</label>
+                <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+                     <input type="number" id="stop-lat" step="any" placeholder="Toca mapa" readonly style="flex: 1;">
+                    <input type="number" id="stop-lng" step="any" placeholder="Toca mapa" readonly style="flex: 1;">
+                </div>
+
                 <label for="stop-name">Nombre Parada:</label>
-                <input type="text" id="stop-name" placeholder="Ej: Esq. Av. Corrientes">
+                <input type="text" id="stop-name" placeholder="Ej: Parada Centro">
 
                 <label for="stop-time">Horario Programado (HH:MM):</label>
                 <input type="time" id="stop-time">
 
-                 <label for="stop-lat">Latitud:</label>
-                 <!-- Marcamos como readonly, ya que se rellena con el clic -->
-                <input type="number" id="stop-lat" step="any" placeholder="Clic en mapa" readonly>
-
-                 <label for="stop-lng">Longitud:</label>
-                 <!-- Marcamos como readonly, ya que se rellena con el clic -->
-                <input type="number" id="stop-lng" step="any" placeholder="Clic en mapa" readonly>
-
-                <button id="addStopBtn">Añadir Parada a la Ruta</button>
+                <button id="addStopBtn">Añadir Parada</button>
             </div>
 
             <div id="route-info">
-                <h3>Ruta Actual</h3>
-                 <label for="avg-speed">Velocidad Promedio (km/h):</label>
-                 <input type="number" id="avg-speed" value="30" min="1">
+                <h3>Ruta Programada</h3>
+                <!-- Eliminado input de Velocidad Promedio -->
                 <ul id="stops-list">
                     <!-- Las paradas añadidas aparecerán aquí -->
                 </ul>
-                 <button id="startRouteBtn" disabled>Iniciar Seguimiento de Ruta</button>
+                 <button id="startRouteBtn" disabled>Iniciar Seguimiento</button>
             </div>
 
-            <div id="status-section">
-                <h3>Estado Actual</h3>
-                <div id="status-display" class="idle">Esperando inicio de ruta...</div>
-                 <p id="gps-status">GPS: Esperando señal...</p>
-            </div>
-        </div>
-
-        <div id="map-container">
-             <div id="map-header">
-                Mapa Interactivo
-             </div>
-            <div id="map"></div>
         </div>
     </main>
 
     <script>
-        // --- Variables Globales (sin cambios) ---
+        // --- Variables Globales ---
         let map;
         let stops = [];
         let currentLocationMarker = null;
         let stopMarkers = {};
         let currentStopIndex = -1;
         let watchId = null;
-        let averageSpeedKMH = 30;
+        // let averageSpeedKMH = 30; // ELIMINADO - Ya no se usa velocidad
         let lastKnownPosition = null;
         const R = 6371; // Radio Tierra en km
+        let arrivalMarker = null; // Marcador temporal al llegar a una parada
 
-        // --- Elementos del DOM (sin cambios) ---
+        // --- Elementos del DOM ---
         const stopNameInput = document.getElementById('stop-name');
         const stopTimeInput = document.getElementById('stop-time');
         const stopLatInput = document.getElementById('stop-lat');
@@ -268,94 +295,85 @@
         const stopsList = document.getElementById('stops-list');
         const startRouteBtn = document.getElementById('startRouteBtn');
         const statusDisplay = document.getElementById('status-display');
-        const avgSpeedInput = document.getElementById('avg-speed');
+        // const avgSpeedInput = document.getElementById('avg-speed'); // ELIMINADO
         const gpsStatus = document.getElementById('gps-status');
 
         // --- Inicialización ---
         document.addEventListener('DOMContentLoaded', () => {
             initializeMap();
-            loadAverageSpeed();
-            avgSpeedInput.addEventListener('change', () => {
-                 averageSpeedKMH = parseFloat(avgSpeedInput.value) || 30;
-                 if(currentStopIndex !== -1 && lastKnownPosition) {
-                     handleLocationUpdate(lastKnownPosition); // Recalcular si ruta activa
-                 }
-            });
+            // loadAverageSpeed(); // ELIMINADO
+            // Listener de avgSpeedInput ELIMINADO
             addStopBtn.addEventListener('click', addStop);
             startRouteBtn.addEventListener('click', startRouteTracking);
 
-            // Intenta obtener ubicación inicial para centrar mapa
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const { latitude, longitude } = position.coords;
-                    map.setView([latitude, longitude], 13);
+                    map.setView([latitude, longitude], 14); // Zoom inicial un poco más cercano
                      updateGPSStatus(`Precisión: ${position.coords.accuracy.toFixed(0)}m`);
                 },
                 () => {
-                    map.setView([-34.6037, -58.3816], 12); // Ubicación por defecto (Bs As)
-                    updateGPSStatus("No se pudo obtener ubicación inicial.");
+                    map.setView([-34.6037, -58.3816], 12);
+                    updateGPSStatus("GPS inicial no disponible.");
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         });
 
         function initializeMap() {
-            map = L.map('map').setView([-34.6037, -58.3816], 12);
+            map = L.map('map', {
+                 zoomControl: true // Asegurar controles de zoom visibles
+            }).setView([-34.6037, -58.3816], 12);
+             map.zoomControl.setPosition('bottomright'); // Mover zoom a esquina inferior
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                attribution: '© OSM', // Más corto
+                maxZoom: 19, // Permitir más zoom
             }).addTo(map);
 
-            // ***** MODIFICACIÓN *****
-            // Evento de clic en el mapa para RELLENAR COORDENADAS en el formulario
+            // Evento clic en mapa para rellenar coordenadas
             map.on('click', (e) => {
                 const { lat, lng } = e.latlng;
-                // Rellena directamente los campos del formulario
                 stopLatInput.value = lat.toFixed(6);
                 stopLngInput.value = lng.toFixed(6);
 
-                 // Opcional: Añadir un feedback visual temporal muy simple (ej. un círculo pequeño que desaparece)
-                 const clickFeedback = L.circleMarker(e.latlng, { radius: 5, color: 'red', fillOpacity: 0.5 }).addTo(map);
+                 // Feedback visual simple (punto rojo temporal)
+                 if (arrivalMarker) map.removeLayer(arrivalMarker); // Quitar marcador anterior si existe
+                 arrivalMarker = L.circleMarker(e.latlng, { radius: 6, color: '#ff4136', fillOpacity: 0.7, weight: 1 }).addTo(map);
                  setTimeout(() => {
-                    if (map.hasLayer(clickFeedback)) {
-                         map.removeLayer(clickFeedback);
+                    if (arrivalMarker && map.hasLayer(arrivalMarker)) {
+                         map.removeLayer(arrivalMarker);
+                         arrivalMarker = null; // Resetear variable
                     }
-                 }, 750); // Desaparece después de 750ms
-
-                 // Ya no se usa el popup ni la función fillStopForm
+                 }, 1000);
             });
         }
 
-        // La función fillStopForm ya no es necesaria y se puede eliminar
-        // function fillStopForm(lat, lng) { ... } // <- ELIMINADA
+        // Función loadAverageSpeed ELIMINADA
 
-        function loadAverageSpeed() {
-            averageSpeedKMH = parseFloat(avgSpeedInput.value) || 30;
-        }
-
-        // --- Gestión de Paradas (sin cambios funcionales mayores) ---
+        // --- Gestión de Paradas (lógica interna sin cambios, solo renderizado) ---
         function addStop() {
             const name = stopNameInput.value.trim();
             const time = stopTimeInput.value;
             const lat = parseFloat(stopLatInput.value);
             const lng = parseFloat(stopLngInput.value);
 
-            if (!name || !time || isNaN(lat) || isNaN(lng)) {
-                alert("Por favor, haz clic en el mapa para obtener coordenadas, luego ingresa nombre, hora y pulsa 'Añadir Parada'.");
+            if (!time || isNaN(lat) || isNaN(lng)) { // Nombre opcional
+                alert("Toca el mapa y selecciona la hora programada.");
                 return;
             }
+             const displayName = name || `Parada (${lat.toFixed(3)}, ${lng.toFixed(3)})`; // Nombre por defecto si está vacío
 
-            const newStop = { id: Date.now(), name, time, lat, lng };
+            const newStop = { id: Date.now(), name: displayName, time, lat, lng };
             stops.push(newStop);
+             stops.sort((a, b) => a.time.localeCompare(b.time)); // Asegurar orden al añadir
             renderStopsList();
             addStopMarker(newStop);
 
-            // Limpiar formulario para la siguiente parada
             stopNameInput.value = '';
             stopTimeInput.value = '';
-            stopLatInput.value = ''; // Limpiar coords también
+            stopLatInput.value = '';
             stopLngInput.value = '';
-
             startRouteBtn.disabled = false;
         }
 
@@ -365,89 +383,111 @@
                  map.removeLayer(stopMarkers[stopId]);
                  delete stopMarkers[stopId];
              }
+             // Reordenar por si acaso, aunque el filter mantiene orden
+             stops.sort((a, b) => a.time.localeCompare(b.time));
              renderStopsList();
+
              if (stops.length === 0) {
                  startRouteBtn.disabled = true;
                  stopTracking();
-                 updateStatusDisplay("idle", "Añade paradas para iniciar.");
+                 updateStatusDisplay("idle", "Añade paradas e inicia ruta");
              } else if (currentStopIndex >= stops.length) {
-                 currentStopIndex = stops.length -1;
-                  if (currentStopIndex < 0) stopTracking();
+                 // Si se borró la última o una posterior a la activa
+                 currentStopIndex = stops.length -1; // Ajustar índice (o podría ser -1 si se borra la única activa)
+                  if (currentStopIndex < 0) {
+                       stopTracking();
+                       updateStatusDisplay("idle", "Ruta vacía tras borrar.");
+                  } else {
+                      renderStopsList(); // Actualizar resaltado
+                      // El estado se actualizará en el próximo tick del GPS si está activo
+                  }
+             } else {
+                // Si se borró una parada antes de la actual, el índice es correcto
+                // Si se borró la parada actual, avanzará a la siguiente 'nueva' en ese índice
+                renderStopsList(); // Actualizar resaltado y numeración
              }
          }
 
         function renderStopsList() {
             stopsList.innerHTML = '';
-             stops.sort((a, b) => a.time.localeCompare(b.time)); // Ordenar por hora
+            // Ordenar siempre por hora antes de renderizar
+            // stops.sort((a, b) => a.time.localeCompare(b.time)); // Ya se hace al añadir/quitar
 
             stops.forEach((stop, index) => {
                 const li = document.createElement('li');
+                li.dataset.stopId = stop.id; // Guardar ID para referencia
                  li.innerHTML = `
                     <span>${index + 1}. ${stop.name} (${stop.time})</span>
-                    <button onclick="removeStop(${stop.id})">X</button>
+                    <button onclick="removeStop(${stop.id})" aria-label="Eliminar parada ${stop.name}">X</button>
                 `;
-                // Podríamos añadir lógica para resaltar la parada actual (currentStopIndex) aquí
                 if (index === currentStopIndex) {
-                    li.style.backgroundColor = "#eef"; // Resaltado suave
-                    li.style.fontWeight = "bold";
+                    li.classList.add('active-stop'); // Clase para resaltar parada actual
                 }
                 stopsList.appendChild(li);
             });
+            // Scroll a la parada activa si la lista es larga
+            const activeLi = stopsList.querySelector('.active-stop');
+            if (activeLi) {
+                activeLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
 
         function addStopMarker(stop) {
-             const marker = L.marker([stop.lat, stop.lng]).addTo(map)
-                .bindPopup(`<b>${stop.name}</b><br>Programado: ${stop.time}`);
+             const marker = L.marker([stop.lat, stop.lng], {
+                 // Opcional: Icono personalizado
+                 // icon: L.icon({ iconUrl: 'bus-stop.png', iconSize: [25, 25] })
+             }).addTo(map)
+                .bindPopup(`<b>${stop.name}</b><br>Prog: ${stop.time}`);
              stopMarkers[stop.id] = marker;
         }
 
-        // --- Seguimiento de Ruta y GPS (sin cambios funcionales mayores) ---
+        // --- Seguimiento de Ruta y GPS ---
         function startRouteTracking() {
-            if (stops.length === 0) {
-                alert("Añade al menos una parada a la ruta.");
-                return;
-            }
-            if (watchId) return; // Ya está corriendo
+            if (stops.length === 0) return;
+            if (watchId) return; // Ya activo
 
             currentStopIndex = 0;
-             renderStopsList(); // Re-renderizar para resaltar la primera parada
-            updateStatusDisplay("idle", "Iniciando seguimiento...");
+            renderStopsList();
+            updateStatusDisplay("idle", "Iniciando...");
             startRouteBtn.textContent = "Seguimiento Activo";
             startRouteBtn.disabled = true;
 
             if (navigator.geolocation) {
-                 const options = { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 };
+                 const options = { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }; // Ajustes timeout/age
                 watchId = navigator.geolocation.watchPosition(
                     handleLocationUpdate,
                     handleLocationError,
                     options
                 );
-                updateGPSStatus("GPS activado, esperando señal...");
+                updateGPSStatus("Activado, buscando señal...");
             } else {
-                alert("Geolocalización no es soportada por este navegador.");
-                updateStatusDisplay("idle", "Error: Geolocalización no soportada.");
-                startRouteBtn.textContent = "Iniciar Seguimiento de Ruta";
+                alert("Geolocalización no soportada.");
+                updateStatusDisplay("idle", "GPS no soportado");
+                startRouteBtn.textContent = "Iniciar Seguimiento";
                 startRouteBtn.disabled = stops.length === 0;
             }
         }
 
-         function stopTracking() {
+         function stopTracking(reason = "detenido") {
              if (watchId) {
                  navigator.geolocation.clearWatch(watchId);
                  watchId = null;
              }
+             const wasActive = currentStopIndex !== -1;
              currentStopIndex = -1;
              lastKnownPosition = null;
              if (currentLocationMarker) {
                  map.removeLayer(currentLocationMarker);
                  currentLocationMarker = null;
              }
-             updateStatusDisplay("idle", "Seguimiento detenido.");
+             if (reason !== "completed") { // No mostrar 'detenido' si se completó
+                 updateStatusDisplay("idle", `Seguimiento ${reason}.`);
+             }
              updateGPSStatus("GPS desactivado.");
-             startRouteBtn.textContent = "Iniciar Seguimiento de Ruta";
+             startRouteBtn.textContent = "Iniciar Seguimiento";
              startRouteBtn.disabled = stops.length === 0;
-             renderStopsList(); // Quitar resaltado
-             console.log("Seguimiento detenido.");
+             if (wasActive) renderStopsList(); // Quitar resaltado
+             console.log("Seguimiento detenido:", reason);
          }
 
 
@@ -460,118 +500,137 @@
             const userLatLng = [latitude, longitude];
             if (!currentLocationMarker) {
                 currentLocationMarker = L.circleMarker(userLatLng, {
-                    radius: 8, fillColor: "#007bff", color: "#000",
-                    weight: 1, opacity: 1, fillOpacity: 0.8
-                }).addTo(map).bindPopup("Tu ubicación actual").openPopup();
+                    radius: 7, fillColor: "#007bff", color: "#ffffff", // Blanco borde para contraste
+                    weight: 2, opacity: 1, fillOpacity: 0.9
+                }).addTo(map).bindPopup("Ubicación actual");
             } else {
                 currentLocationMarker.setLatLng(userLatLng);
             }
-            // map.setView(userLatLng); // Descomentar si quieres que siempre centre en el usuario
+             // No centrar mapa automáticamente para que el chófer tenga control
+             // map.setView(userLatLng);
 
             if (currentStopIndex < 0 || currentStopIndex >= stops.length) {
-                // Si se completó la ruta mientras se obtenía la posición, detener
-                if (currentStopIndex >= stops.length && stops.length > 0){
-                     updateStatusDisplay("idle", `Ruta completada. ¡Última parada alcanzada!`);
-                } else {
-                    updateStatusDisplay("idle", "Ruta no iniciada o sin paradas.");
-                }
-                stopTracking();
+                // Puede llegar aquí si se borró la última parada mientras el GPS actualizaba
+                 if (stops.length > 0 && currentStopIndex >= stops.length) {
+                     updateStatusDisplay("idle", `Ruta completada.`); // Mensaje final simple
+                     stopTracking("completed");
+                 } else {
+                     // Si no hay paradas o el índice es inválido por otra razón
+                     if (!watchId) return; // Ya se detuvo
+                     updateStatusDisplay("idle", "Esperando ruta...");
+                     stopTracking("ruta inválida");
+                 }
                 return;
             }
 
             const nextStop = stops[currentStopIndex];
 
-            // Calcular distancia Haversine
-            const distanceKm = calculateDistance(latitude, longitude, nextStop.lat, nextStop.lng);
-            const distanceM = distanceKm * 1000;
-
-            // Estimar tiempo de viaje (simplificado)
-            const avgSpeedMPS = (averageSpeedKMH * 1000) / 3600;
-            let estimatedTimeSeconds = (avgSpeedMPS > 0) ? (distanceM / avgSpeedMPS) : Infinity;
-
+            // *** CÁLCULO SIMPLIFICADO ***
             const now = new Date();
             const scheduledTime = parseTimeString(nextStop.time);
 
             if (!scheduledTime) {
-                 console.error("Error al parsear la hora programada:", nextStop.time);
-                 updateStatusDisplay("idle", `Error en hora de parada ${nextStop.name}`);
-                 // ¿Avanzar a la siguiente? ¿Detener? Por ahora, se queda aquí.
-                 // Podrías añadir lógica para saltar esta parada si la hora es inválida.
+                 console.error("Hora inválida para parada:", nextStop.name, nextStop.time);
+                 updateStatusDisplay("idle", `Error hora: ${nextStop.name}`);
+                 // Considerar avanzar o detener si la hora es inválida? Por ahora se queda.
+                 // currentStopIndex++; // Podría saltar la parada
+                 // renderStopsList();
                  return;
             }
 
-            // Calcular ETA y diferencia
-             const estimatedArrival = new Date(now.getTime() + estimatedTimeSeconds * 1000);
-             const timeDifferenceMs = estimatedArrival.getTime() - scheduledTime.getTime();
+            // Comparar hora actual directamente con la hora programada de la PRÓXIMA parada
+            // diferencia > 0 significa que YA PASÓ la hora programada (atraso)
+            // diferencia < 0 significa que TODAVÍA FALTA para la hora programada (adelanto)
+            const timeDifferenceMs = now.getTime() - scheduledTime.getTime();
 
-            // Mostrar estado
-            updateStatusDisplayWithDifference(timeDifferenceMs, nextStop, distanceKm);
+            // Mostrar estado basado en esta diferencia directa
+            updateStatusDisplayWithDifference(timeDifferenceMs, nextStop);
 
-            // Lógica (Simple) para avanzar a la siguiente parada
-             const arrivalThresholdMeters = 50; // Umbral de llegada en metros
+            // *** Lógica de AVANCE DE PARADA (Usa distancia GPS) ***
+            const distanceM = calculateDistance(latitude, longitude, nextStop.lat, nextStop.lng) * 1000;
+            const arrivalThresholdMeters = 50; // Umbral de llegada en metros
+
              if (distanceM < arrivalThresholdMeters) {
-                 console.log(`Detectada llegada a ${nextStop.name} (distancia: ${distanceM.toFixed(1)}m)`);
+                 console.log(`Llegada detectada a ${nextStop.name} (Dist: ${distanceM.toFixed(1)}m)`);
+
+                 // Feedback visual de llegada (opcional)
+                 if (stopMarkers[nextStop.id]) {
+                     stopMarkers[nextStop.id].setOpacity(0.5); // Atenuar marcador de parada alcanzada
+                 }
+                 if (arrivalMarker) map.removeLayer(arrivalMarker); // Quitar marcador anterior si existe
+                  arrivalMarker = L.circleMarker([nextStop.lat, nextStop.lng], { radius: 10, color: '#2ECC40', fillColor: '#2ECC40', fillOpacity: 0.4, weight: 1 }).addTo(map);
+                  setTimeout(() => {
+                      if (arrivalMarker && map.hasLayer(arrivalMarker)) map.removeLayer(arrivalMarker);
+                      arrivalMarker = null; // Limpiar variable
+                  }, 2000); // Mostrar 2 segundos
+
+
                  currentStopIndex++;
                  renderStopsList(); // Actualizar resaltado en la lista
 
                  if (currentStopIndex >= stops.length) {
-                     updateStatusDisplay("idle", `Ruta completada. ¡Última parada alcanzada: ${nextStop.name}!`);
-                     stopTracking();
+                     // Ruta completada
+                     updateStatusDisplay("idle", `¡Ruta completada! Última parada: ${nextStop.name}`);
+                     stopTracking("completed");
                  } else {
+                      // Preparar para la siguiente parada (el estado se actualizará en el próximo tick)
                       const nextUpcomingStop = stops[currentStopIndex];
-                     updateStatusDisplay("idle", `Llegada a ${nextStop.name}. Próxima: ${nextUpcomingStop.name}. Calculando...`);
-                     // El cálculo para la nueva parada se hará en la siguiente llamada a handleLocationUpdate
+                     updateStatusDisplay("idle", `Próxima: ${nextUpcomingStop.name}. Calculando...`);
                  }
              }
         }
 
         function handleLocationError(error) {
-            console.error("Error de Geolocalización: ", error);
-            let message = "Error de GPS: ";
+            console.warn("Error GPS:", error);
+            let message = "Error GPS: ";
             switch(error.code) {
-                case error.PERMISSION_DENIED: message += "Permiso denegado."; stopTracking(); break;
-                case error.POSITION_UNAVAILABLE: message += "Ubicación no disponible."; break;
-                case error.TIMEOUT: message += "Timeout."; break;
+                case error.PERMISSION_DENIED: message += "Permiso denegado."; stopTracking("permiso denegado"); break;
+                case error.POSITION_UNAVAILABLE: message += "Señal no disponible."; break; // Mantener seguimiento?
+                case error.TIMEOUT: message += "Timeout."; break; // Mantener seguimiento?
                 default: message += "Desconocido."; break;
             }
              updateGPSStatus(message);
-             updateStatusDisplay("idle", message);
-             // No detenemos el tracking por errores temporales (excepto permiso denegado)
+             // No necesariamente cambiar display principal por errores temporales
+             // updateStatusDisplay("idle", message);
         }
 
-        // Modificado para mostrar también la distancia
-        function updateStatusDisplayWithDifference(differenceMs, nextStop, distanceKm) {
+        // Modificado para usar la diferencia de tiempo directa
+        function updateStatusDisplayWithDifference(differenceMs, nextStop) {
             const totalSeconds = Math.abs(differenceMs) / 1000;
             const minutes = Math.floor(totalSeconds / 60);
             const seconds = Math.floor(totalSeconds % 60);
             const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-            let statusText = `Próxima: ${nextStop.name} (${nextStop.time}) | Dist: ${distanceKm.toFixed(2)} km. `;
+            let statusText = `Próx: ${nextStop.name} (${nextStop.time})<br>`; // Salto de línea para claridad
             let statusClass = "on-time";
-            const onTimeThresholdSeconds = 30;
+            const onTimeThresholdSeconds = 30; // Umbral +/- 30 seg
 
-            if (differenceMs > (onTimeThresholdSeconds * 1000)) {
-                statusText += `Atraso Est: -${formattedTime}`; statusClass = "late";
-            } else if (differenceMs < (-onTimeThresholdSeconds * 1000)) {
-                statusText += `Adelanto Est: +${formattedTime}`; statusClass = "early";
-            } else {
-                statusText += `En tiempo Est.`; statusClass = "on-time";
+            if (differenceMs > (onTimeThresholdSeconds * 1000)) { // Hora actual es posterior a la programada = ATRASO
+                statusText += `Atrasado: -${formattedTime}`;
+                statusClass = "late";
+            } else if (differenceMs < (-onTimeThresholdSeconds * 1000)) { // Hora actual es anterior a la programada = ADELANTO
+                statusText += `Adelantado: +${formattedTime}`;
+                 statusClass = "early";
+            } else { // Dentro del umbral
+                statusText += `A horario`;
+                statusClass = "on-time";
             }
-
-            updateStatusDisplay(statusClass, statusText);
+            // Usar innerHTML por el <br>
+            statusDisplay.innerHTML = statusText;
+            statusDisplay.className = `status-display ${statusClass}`;
         }
 
 
         function updateStatusDisplay(className, text) {
             statusDisplay.className = `status-display ${className}`;
-            statusDisplay.textContent = text;
+            statusDisplay.innerHTML = text; // Usar innerHTML por si acaso hay formato
         }
 
          function updateGPSStatus(text) {
              gpsStatus.textContent = `GPS: ${text}`;
          }
 
-        // --- Funciones de Utilidad (sin cambios) ---
+        // --- Funciones de Utilidad (calculateDistance, deg2rad, parseTimeString sin cambios) ---
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const dLat = deg2rad(lat2 - lat1);
             const dLon = deg2rad(lon2 - lon1);
@@ -585,7 +644,7 @@
          function parseTimeString(timeString) {
              try {
                  const [hours, minutes] = timeString.split(':').map(Number);
-                 if (isNaN(hours) || isNaN(minutes)) return null;
+                 if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null; // Validación básica
                  const date = new Date();
                  date.setHours(hours, minutes, 0, 0);
                  return date;
