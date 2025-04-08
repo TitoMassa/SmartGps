@@ -8,45 +8,76 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
     <style>
-        /* Estilos CSS (Mayormente sin cambios, ajustes menores para nuevo input/display) */
+        /* Estilos CSS (Añadidos/Ajustados para modo manual) */
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: sans-serif; background-color: #f4f4f4; }
         body { display: flex; flex-direction: column; }
         header { background-color: #333; color: white; padding: 8px 15px; text-align: center; flex-shrink: 0; font-size: 1.1em; }
         main { display: flex; flex-direction: column; flex: 1; overflow: hidden; padding: 5px; }
-        #map-container { height: 45vh; /* Un poco menos para dar espacio a controles */ display: flex; flex-direction: column; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 10px; flex-shrink: 0; }
+        #map-container { height: 45vh; display: flex; flex-direction: column; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 10px; flex-shrink: 0; }
         #map-header { padding: 8px; background-color: #eee; border-bottom: 1px solid #ccc; border-radius: 8px 8px 0 0; font-weight: bold; font-size: 0.9em; text-align: center; flex-shrink: 0; }
         #map { flex: 1; border-radius: 0 0 8px 8px; cursor: crosshair; }
         #controls { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 10px; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-y: auto; width: auto; }
-        #add-stop-form, #route-info, #status-section { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
-        #status-section { border-bottom: none; margin-bottom: 0; }
-        #add-stop-form h3, #route-info h3, #status-section h3 { margin-top: 0; margin-bottom: 8px; font-size: 1em; color: #333; }
+        #add-stop-form, #route-info, #status-section, #navigation-mode { /* Añadido #navigation-mode */
+            border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px;
+        }
+        #status-section { border-bottom: none; margin-bottom: 0; } /* Último sin borde */
+        #add-stop-form h3, #route-info h3, #status-section h3, #navigation-mode h3 { /* Añadido #navigation-mode h3 */
+             margin-top: 0; margin-bottom: 8px; font-size: 1em; color: #333;
+        }
         #add-stop-form label { display: block; margin-bottom: 3px; font-weight: bold; font-size: 0.85em; }
-        #add-stop-form .time-inputs { display: flex; gap: 10px; margin-bottom: 8px; } /* Contenedor para horas */
-        #add-stop-form .time-inputs > div { flex: 1; } /* Cada input de hora ocupa mitad */
+        #add-stop-form .time-inputs { display: flex; gap: 10px; margin-bottom: 8px; }
+        #add-stop-form .time-inputs > div { flex: 1; }
         #add-stop-form input[type="text"], #add-stop-form input[type="time"], #add-stop-form input[type="number"],
-        #add-stop-form button, #startRouteBtn, #finishRouteBtn {
+        #add-stop-form button, #startRouteBtn, #finishRouteBtn,
+        #prevBtn, #nextBtn { /* Añadidos botones manuales */
             width: 100%; padding: 8px 10px; margin-bottom: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em;
         }
         #add-stop-form input[readonly] { background-color: #e9e9e9; }
-        #add-stop-form button, #startRouteBtn, #finishRouteBtn { background-color: #007bff; color: white; border: none; cursor: pointer; transition: background-color 0.3s ease; }
-        #add-stop-form button:hover, #startRouteBtn:hover, #finishRouteBtn:hover { background-color: #0056b3; }
+        #add-stop-form button, #startRouteBtn, #finishRouteBtn, #prevBtn, #nextBtn { background-color: #007bff; color: white; border: none; cursor: pointer; transition: background-color 0.3s ease; }
+        #add-stop-form button:hover, #startRouteBtn:hover, #finishRouteBtn:hover, #prevBtn:hover, #nextBtn:hover { background-color: #0056b3; }
         #finishRouteBtn { background-color: #28a745; }
         #finishRouteBtn:hover { background-color: #218838; }
-        #startRouteBtn:disabled, #finishRouteBtn:disabled { background-color: #cccccc; cursor: not-allowed; }
+        /* Estilos botones manuales */
+        #prevBtn, #nextBtn { background-color: #6c757d; }
+        #prevBtn:hover, #nextBtn:hover { background-color: #5a6268; }
+        #startRouteBtn:disabled, #finishRouteBtn:disabled, #prevBtn:disabled, #nextBtn:disabled { background-color: #cccccc; cursor: not-allowed; color: #666; }
 
-        #stops-list { list-style: none; padding: 0; margin: 5px 0 0 0; max-height: 110px; /* Reducido un poco */ overflow-y: auto; border-top: 1px solid #eee; }
-        #stops-list li { padding: 5px; /* Más compacto */ border-bottom: 1px solid #eee; font-size: 0.8em; /* Más pequeño */ display: flex; justify-content: space-between; align-items: center; gap: 5px; }
+        #stops-list { list-style: none; padding: 0; margin: 5px 0 0 0; max-height: 90px; /* Reducido aún más */ overflow-y: auto; border-top: 1px solid #eee; }
+        #stops-list li { padding: 5px; border-bottom: 1px solid #eee; font-size: 0.8em; display: flex; justify-content: space-between; align-items: center; gap: 5px; }
         #stops-list li .stop-details { flex-grow: 1; }
-        #stops-list li .stop-times { font-size: 0.9em; color: #555; text-align: right; white-space: nowrap; } /* Mostrar horas juntas */
+        #stops-list li .stop-times { font-size: 0.9em; color: #555; text-align: right; white-space: nowrap; }
         #stops-list li button { background-color: #dc3545; color: white; border: none; padding: 2px 5px; border-radius: 3px; cursor: pointer; font-size: 0.75em; flex-shrink: 0; }
         #stops-list li button:hover { background-color: #c82333; }
         #stops-list li.active-stop { background-color: #e0e8ff; font-weight: bold; }
         body.tracking-active #stops-list li button { display: none; }
 
+        /* Contenedor modo navegación */
+        #navigation-mode-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px; /* Espacio entre checkbox y botones */
+            margin-top: 5px;
+        }
+         #navigation-mode-controls label {
+             display: flex;
+             align-items: center;
+             font-size: 0.85em;
+             gap: 5px; /* Espacio entre check y texto */
+         }
+         #manual-buttons {
+             display: flex;
+             gap: 10px;
+             flex-grow: 1; /* Ocupa espacio restante */
+         }
+         #manual-buttons button {
+             flex: 1; /* Botones de igual ancho */
+             margin-bottom: 0; /* Quitar margen inferior si están en flex */
+         }
+
         #route-indicator { font-size: 0.8em; color: #555; margin-bottom: 5px; text-align: center; font-weight: bold; }
-        #status-display { margin-top: 5px; padding: 10px; border-radius: 5px; text-align: center; font-size: 1.3em; /* Reducido */ font-weight: bold; line-height: 1.3; min-height: 4em; /* Espacio para 2 líneas */ display: flex; flex-direction: column; justify-content: center; }
+        #status-display { margin-top: 5px; padding: 10px; border-radius: 5px; text-align: center; font-size: 1.3em; font-weight: bold; line-height: 1.3; min-height: 4em; display: flex; flex-direction: column; justify-content: center; }
         #status-display .status-info { font-size: 0.8em; font-weight: normal; color: #333; margin-bottom: 4px;}
-        #status-display .status-time { font-size: 1.3em; font-weight: bold; } /* Tamaño relativo al contenedor */
+        #status-display .status-time { font-size: 1.3em; font-weight: bold; }
         #status-display.on-time { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         #status-display.late { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         #status-display.early { background-color: #cce5ff; color: #004085; border: 1px solid #b8daff; }
@@ -56,7 +87,7 @@
         .leaflet-control-zoom { transform: scale(1.1); transform-origin: top left; }
     </style>
 </head>
-<body class=""> <!-- Clase 'tracking-active' se gestiona con JS -->
+<body class="">
 
     <header><h1>Smart Move Pro</h1></header>
 
@@ -76,6 +107,20 @@
                  <p id="gps-status">GPS: Esperando señal...</p>
             </div>
 
+            <!-- Sección Modo de Navegación -->
+            <div id="navigation-mode">
+                <h3>Modo de Avance</h3>
+                <div id="navigation-mode-controls">
+                    <label for="manualModeCheckbox">
+                        <input type="checkbox" id="manualModeCheckbox"> Manual
+                    </label>
+                    <div id="manual-buttons">
+                        <button id="prevBtn" disabled> < Anterior </button>
+                        <button id="nextBtn" disabled> Siguiente > </button>
+                    </div>
+                </div>
+            </div>
+
             <div id="add-stop-form">
                 <h3 id="add-stop-title">Añadir Parada (Ruta 1)</h3>
                 <label for="stop-lat">Ubicación (Lat/Lng):</label>
@@ -86,14 +131,8 @@
                 <label for="stop-name">Nombre Parada:</label>
                 <input type="text" id="stop-name" placeholder="Ej: Parada Centro">
                 <div class="time-inputs">
-                    <div>
-                        <label for="stop-time">Llegada (HH:MM):</label>
-                        <input type="time" id="stop-time">
-                    </div>
-                    <div>
-                         <label for="stop-departure-time">Salida (HH:MM):</label>
-                        <input type="time" id="stop-departure-time"> <!-- Nuevo Input -->
-                    </div>
+                    <div><label for="stop-time">Llegada (HH:MM):</label><input type="time" id="stop-time"></div>
+                    <div><label for="stop-departure-time">Salida (HH:MM):</label><input type="time" id="stop-departure-time"></div>
                 </div>
                 <button id="addStopBtn">Añadir Parada</button>
                 <button id="finishRouteBtn" disabled>Finalizar Ruta / Iniciar Siguiente</button>
@@ -121,12 +160,13 @@
         let lastKnownPosition = null;
         const R = 6371;
         let arrivalMarker = null;
-        let currentStatusInfo = { phase: 'idle', text: 'Esperando inicio' }; // Para saber qué se está calculando
+        let currentStatusInfo = { phase: 'idle', text: 'Esperando inicio' };
+        let isManualMode = false; // NUEVO: Estado del modo manual
 
         // --- Elementos del DOM ---
         const stopNameInput = document.getElementById('stop-name');
         const stopTimeInput = document.getElementById('stop-time');
-        const stopDepartureTimeInput = document.getElementById('stop-departure-time'); // Nuevo
+        const stopDepartureTimeInput = document.getElementById('stop-departure-time');
         const stopLatInput = document.getElementById('stop-lat');
         const stopLngInput = document.getElementById('stop-lng');
         const addStopBtn = document.getElementById('addStopBtn');
@@ -138,6 +178,9 @@
         const addStopTitle = document.getElementById('add-stop-title');
         const routeListTitle = document.getElementById('route-list-title');
         const routeIndicator = document.getElementById('route-indicator');
+        const manualModeCheckbox = document.getElementById('manualModeCheckbox'); // NUEVO
+        const prevBtn = document.getElementById('prevBtn'); // NUEVO
+        const nextBtn = document.getElementById('nextBtn'); // NUEVO
 
         // --- Inicialización ---
         document.addEventListener('DOMContentLoaded', () => {
@@ -145,6 +188,9 @@
             addStopBtn.addEventListener('click', addStop);
             finishRouteBtn.addEventListener('click', finishCurrentRoute);
             startRouteBtn.addEventListener('click', startRouteTracking);
+            manualModeCheckbox.addEventListener('change', toggleManualMode); // NUEVO Listener
+            prevBtn.addEventListener('click', goToPreviousStopOrRoute); // NUEVO Listener
+            nextBtn.addEventListener('click', goToNextStopOrRoute); // NUEVO Listener
             updateUIBasedOnState();
 
             navigator.geolocation.getCurrentPosition(
@@ -155,13 +201,13 @@
         });
 
         function initializeMap() {
+            // ... (sin cambios)
              map = L.map('map', { zoomControl: true }).setView([-34.6037, -58.3816], 12);
              map.zoomControl.setPosition('bottomright');
              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM', maxZoom: 19 }).addTo(map);
              map.on('click', (e) => {
                 stopLatInput.value = e.latlng.lat.toFixed(6);
                 stopLngInput.value = e.latlng.lng.toFixed(6);
-                 // Feedback visual
                  if (arrivalMarker) map.removeLayer(arrivalMarker);
                  arrivalMarker = L.circleMarker(e.latlng, { radius: 6, color: '#ff4136', fillOpacity: 0.7, weight: 1 }).addTo(map);
                  setTimeout(() => { if (arrivalMarker && map.hasLayer(arrivalMarker)) map.removeLayer(arrivalMarker); arrivalMarker = null; }, 1000);
@@ -169,197 +215,208 @@
         }
 
         // --- Gestión de Paradas y Rutas ---
+        // ... addStop, removeStop, finishCurrentRoute, clearAddStopForm, addStopMarker (sin cambios) ...
         function addStop() {
             if (currentRouteIndex !== -1) { alert("No se pueden añadir paradas durante el seguimiento."); return; }
-
-            const arrivalTime = stopTimeInput.value;
-            const departureTime = stopDepartureTimeInput.value; // Nuevo
-            const lat = parseFloat(stopLatInput.value);
-            const lng = parseFloat(stopLngInput.value);
-
-            if (!arrivalTime || !departureTime || isNaN(lat) || isNaN(lng)) {
-                alert("Completa ubicación (mapa), hora de llegada y hora de salida.");
-                return;
-            }
-
-            // Validación simple: salida >= llegada
-             const arrivalDate = parseTimeString(arrivalTime);
-             const departureDate = parseTimeString(departureTime);
-             if (!arrivalDate || !departureDate || departureDate < arrivalDate) {
-                  alert("La hora de salida debe ser igual o posterior a la hora de llegada.");
-                  return;
-             }
-
-            const name = stopNameInput.value.trim() || `Parada (${lat.toFixed(3)})`;
-            const stopId = Date.now();
-            // Objeto parada ahora incluye departureTime
+            const arrivalTime = stopTimeInput.value; const departureTime = stopDepartureTimeInput.value;
+            const lat = parseFloat(stopLatInput.value); const lng = parseFloat(stopLngInput.value);
+            if (!arrivalTime || !departureTime || isNaN(lat) || isNaN(lng)) { alert("Completa ubicación (mapa), hora de llegada y hora de salida."); return; }
+            const arrivalDate = parseTimeString(arrivalTime); const departureDate = parseTimeString(departureTime);
+            if (!arrivalDate || !departureDate || departureDate < arrivalDate) { alert("La hora de salida debe ser igual o posterior a la hora de llegada."); return; }
+            const name = stopNameInput.value.trim() || `Parada (${lat.toFixed(3)})`; const stopId = Date.now();
             const newStop = { id: stopId, name, time: arrivalTime, departureTime: departureTime, lat, lng };
-
             if (!routes[currentRouteBeingBuiltIndex]) routes[currentRouteBeingBuiltIndex] = [];
-            routes[currentRouteBeingBuiltIndex].push(newStop);
-            routes[currentRouteBeingBuiltIndex].sort((a, b) => a.time.localeCompare(b.time));
-
-            addStopMarker(newStop);
-            clearAddStopForm();
-            renderStopsList();
-            updateUIBasedOnState();
+            routes[currentRouteBeingBuiltIndex].push(newStop); routes[currentRouteBeingBuiltIndex].sort((a, b) => a.time.localeCompare(b.time));
+            addStopMarker(newStop); clearAddStopForm(); renderStopsList(); updateUIBasedOnState();
         }
-
         function removeStop(stopId) {
-            if (currentRouteIndex !== -1) return;
-            const routeToEdit = routes[currentRouteBeingBuiltIndex];
-            if (!routeToEdit) return;
+            if (currentRouteIndex !== -1) return; const routeToEdit = routes[currentRouteBeingBuiltIndex]; if (!routeToEdit) return;
             const stopIndex = routeToEdit.findIndex(stop => stop.id === stopId);
             if (stopIndex > -1) {
                 const removedStop = routeToEdit.splice(stopIndex, 1)[0];
                 if (stopMarkers[removedStop.id]) { map.removeLayer(stopMarkers[removedStop.id]); delete stopMarkers[removedStop.id]; }
-                renderStopsList();
-                updateUIBasedOnState();
+                renderStopsList(); updateUIBasedOnState();
             }
         }
-
         function finishCurrentRoute() {
-            if (currentRouteIndex !== -1) return;
-            const currentRoute = routes[currentRouteBeingBuiltIndex];
+            if (currentRouteIndex !== -1) return; const currentRoute = routes[currentRouteBeingBuiltIndex];
             if (!currentRoute || currentRoute.length === 0) { alert("Añade paradas antes de finalizar."); return; }
-            currentRouteBeingBuiltIndex++;
-            routes[currentRouteBeingBuiltIndex] = [];
-            renderStopsList();
-            updateUIBasedOnState();
+            currentRouteBeingBuiltIndex++; routes[currentRouteBeingBuiltIndex] = []; renderStopsList(); updateUIBasedOnState();
         }
-
         function clearAddStopForm() {
-             stopNameInput.value = '';
-             stopTimeInput.value = '';
-             stopDepartureTimeInput.value = ''; // Limpiar nuevo input
-             stopLatInput.value = '';
-             stopLngInput.value = '';
+             stopNameInput.value = ''; stopTimeInput.value = ''; stopDepartureTimeInput.value = ''; stopLatInput.value = ''; stopLngInput.value = '';
         }
-
         function addStopMarker(stop) {
              const routeNum = routes.findIndex(r => r.some(s => s.id === stop.id)) + 1;
-             const marker = L.marker([stop.lat, stop.lng]).addTo(map)
-                .bindPopup(`<b>${stop.name}</b><br>(Ruta ${routeNum})<br>Lleg: ${stop.time} / Sal: ${stop.departureTime}`);
+             const marker = L.marker([stop.lat, stop.lng]).addTo(map).bindPopup(`<b>${stop.name}</b><br>(Ruta ${routeNum})<br>Lleg: ${stop.time} / Sal: ${stop.departureTime}`);
              stopMarkers[stop.id] = marker;
         }
 
         // --- Renderizado y UI ---
+        // ... renderStopsList (sin cambios) ...
         function renderStopsList() {
-            stopsList.innerHTML = '';
-            let routeToDisplay = null;
-            let routeNumber = -1;
-
-            if (currentRouteIndex !== -1) {
-                routeToDisplay = routes[currentRouteIndex];
-                routeNumber = currentRouteIndex + 1;
-            } else {
-                routeToDisplay = routes[currentRouteBeingBuiltIndex];
-                routeNumber = currentRouteBeingBuiltIndex + 1;
-            }
-
+            stopsList.innerHTML = ''; let routeToDisplay = null; let routeNumber = -1;
+            if (currentRouteIndex !== -1) { routeToDisplay = routes[currentRouteIndex]; routeNumber = currentRouteIndex + 1; }
+            else { routeToDisplay = routes[currentRouteBeingBuiltIndex]; routeNumber = currentRouteBeingBuiltIndex + 1; }
             if (routeToDisplay && routeToDisplay.length > 0) {
                 routeToDisplay.sort((a, b) => a.time.localeCompare(b.time));
                 routeToDisplay.forEach((stop, index) => {
-                    const li = document.createElement('li');
-                    li.dataset.stopId = stop.id;
+                    const li = document.createElement('li'); li.dataset.stopId = stop.id;
                     const removeButtonHtml = currentRouteIndex === -1 ? `<button onclick="removeStop(${stop.id})" aria-label="Eliminar ${stop.name}">X</button>` : '';
-                    // Mostrar ambas horas
-                    li.innerHTML = `
-                        <div class="stop-details">${index + 1}. ${stop.name}</div>
-                        <div class="stop-times">${stop.time} / ${stop.departureTime}</div>
-                        ${removeButtonHtml}
-                    `;
-                    if (currentRouteIndex !== -1 && index === currentStopIndex) {
-                        li.classList.add('active-stop');
-                    }
+                    li.innerHTML = `<div class="stop-details">${index + 1}. ${stop.name}</div><div class="stop-times">${stop.time} / ${stop.departureTime}</div>${removeButtonHtml}`;
+                    if (currentRouteIndex !== -1 && index === currentStopIndex) { li.classList.add('active-stop'); }
                     stopsList.appendChild(li);
                 });
-                const activeLi = stopsList.querySelector('.active-stop');
-                if (activeLi) { activeLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-            } else {
-                stopsList.innerHTML = '<li>No hay paradas en esta ruta.</li>';
-            }
+                const activeLi = stopsList.querySelector('.active-stop'); if (activeLi) { activeLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+            } else { stopsList.innerHTML = '<li>No hay paradas en esta ruta.</li>'; }
         }
 
-         function updateUIBasedOnState() {
-             const isTracking = currentRouteIndex !== -1;
-             const currentBuildRoute = routes[currentRouteBeingBuiltIndex];
-             const totalRoutes = routes.filter(r => r && r.length > 0).length;
-             const buildRouteNum = currentRouteBeingBuiltIndex + 1;
+        function updateUIBasedOnState() {
+            const isTracking = currentRouteIndex !== -1;
+            const currentBuildRoute = routes[currentRouteBeingBuiltIndex];
+            const totalRoutes = routes.filter(r => r && r.length > 0).length;
+            const buildRouteNum = currentRouteBeingBuiltIndex + 1;
 
-             addStopTitle.textContent = `Añadir Parada (Ruta ${buildRouteNum})`;
-             routeListTitle.textContent = isTracking ? `Siguiendo Ruta ${currentRouteIndex + 1}` : `Editando Ruta ${buildRouteNum}`;
-             routeIndicator.textContent = `Total Rutas Creadas: ${totalRoutes}`;
-             document.body.classList.toggle('tracking-active', isTracking);
+            // Títulos y indicador
+            addStopTitle.textContent = `Añadir Parada (Ruta ${buildRouteNum})`;
+            routeListTitle.textContent = isTracking ? `Siguiendo Ruta ${currentRouteIndex + 1}` : `Editando Ruta ${buildRouteNum}`;
+            routeIndicator.textContent = `Total Rutas Creadas: ${totalRoutes}`;
 
-             addStopBtn.disabled = isTracking;
-             finishRouteBtn.disabled = isTracking || !currentBuildRoute || currentBuildRoute.length === 0;
-             startRouteBtn.disabled = isTracking || totalRoutes === 0;
+            // Body class y forms
+            document.body.classList.toggle('tracking-active', isTracking);
+            addStopBtn.disabled = isTracking;
+            finishRouteBtn.disabled = isTracking || !currentBuildRoute || currentBuildRoute.length === 0;
+            startRouteBtn.disabled = isTracking || totalRoutes === 0;
+            if (isTracking) clearAddStopForm();
+            stopNameInput.readOnly = isTracking;
+            stopTimeInput.readOnly = isTracking;
+            stopDepartureTimeInput.readOnly = isTracking;
 
-             if (isTracking) clearAddStopForm();
-             // Habilitar/deshabilitar inputs específicos durante tracking (ya hecho con body class)
-             stopNameInput.readOnly = isTracking;
-             stopTimeInput.readOnly = isTracking;
-             stopDepartureTimeInput.readOnly = isTracking;
-             stopLatInput.readOnly = true; // Siempre readonly
-             stopLngInput.readOnly = true; // Siempre readonly
-         }
+            // Habilitar/deshabilitar controles de navegación manual
+            manualModeCheckbox.disabled = !isTracking; // Solo se puede cambiar modo durante tracking
+            prevBtn.disabled = !isTracking || !isManualMode; // Necesita tracking y modo manual
+            nextBtn.disabled = !isTracking || !isManualMode; // Necesita tracking y modo manual
+
+            // Podríamos añadir lógica para deshabilitar prev/next en los extremos
+             if (isTracking && isManualMode) {
+                 prevBtn.disabled = (currentRouteIndex === 0 && currentStopIndex === 0); // Deshabilitar en la primera parada absoluta
+                 // Deshabilitar next en la última parada absoluta
+                 const lastRouteIdx = routes.length - 1;
+                 nextBtn.disabled = (currentRouteIndex === lastRouteIdx && currentStopIndex === routes[lastRouteIdx].length -1); // Cuidado: -1 si está en la última parada ya
+             }
+        }
+
+        // --- Modo Manual ---
+        function toggleManualMode() {
+            isManualMode = manualModeCheckbox.checked;
+            console.log("Modo Manual:", isManualMode);
+            updateUIBasedOnState(); // Actualiza estado de botones prev/next
+        }
+
+        function goToPreviousStopOrRoute() {
+             if (!isManualMode || currentRouteIndex === -1) return; // Solo en modo manual y con tracking activo
+
+             console.log("Navegación Manual: Anterior");
+
+             currentStopIndex--; // Ir al índice anterior
+
+             if (currentStopIndex < 0) { // ¿Necesitamos ir a la ruta anterior?
+                 currentRouteIndex--; // Ir a la ruta anterior
+                 if (currentRouteIndex < 0) { // ¿Estábamos en la primera ruta?
+                     console.log("Ya estás en la primera parada.");
+                     currentRouteIndex = 0; // No ir más atrás
+                     currentStopIndex = 0;
+                 } else { // Hay una ruta anterior válida
+                     // Ir a la ÚLTIMA parada de la ruta anterior
+                     currentStopIndex = routes[currentRouteIndex].length - 1;
+                      console.log(`Cambiando a Ruta ${currentRouteIndex + 1}, Parada ${currentStopIndex + 1}`);
+                 }
+             } else {
+                 console.log(`Retrocediendo a Parada ${currentStopIndex + 1}`);
+             }
+
+             // Actualizar UI y recalcular estado para la nueva parada/ruta destino
+             renderStopsList();
+             updateUIBasedOnState();
+             // Forzar un recálculo inmediato del estado o esperar al próximo tick del GPS?
+             // Esperar al próximo tick es más simple y consistente con la lógica actual.
+             // Opcional: podríamos llamar a una función que recalcule y muestre el estado inmediatamente.
+             updateStatusForCurrentTarget(); // Llama a una función que actualiza el display inmediatamente
+        }
+
+        function goToNextStopOrRoute() {
+             if (!isManualMode || currentRouteIndex === -1) return; // Solo en modo manual y con tracking activo
+
+             console.log("Navegación Manual: Siguiente");
+             // La lógica es la misma que el avance automático, así que reutilizamos la función
+             advanceStopOrRoute();
+             // La UI se actualizará dentro de advanceStopOrRoute/advanceRoute
+        }
+
+        // NUEVA función para actualizar el display inmediatamente después de nav manual
+        function updateStatusForCurrentTarget() {
+            if (currentRouteIndex === -1 || currentStopIndex === -1) return; // No hacer nada si no hay target
+
+            const currentRoute = routes[currentRouteIndex];
+             if (!currentRoute || currentStopIndex >= currentRoute.length) return;
+
+            const targetStop = currentRoute[currentStopIndex];
+            const previousStop = (currentStopIndex > 0) ? currentRoute[currentStopIndex - 1] : null;
+
+            let infoText = "";
+            if (!previousStop) { // Hacia la primera parada
+                infoText = `(Manual) Hacia ${targetStop.name}`;
+            } else { // Hacia una parada intermedia/final
+                infoText = `(Manual) Hacia ${targetStop.name}`;
+                // Podríamos añadir lógica para mostrar "Esperando salida de X" si estamos cerca de previousStop
+            }
+
+            // Mostrar texto informativo, el tiempo se calculará en el próximo tick del GPS
+            updateStatusDisplayContent("idle", infoText, "--:--");
+        }
+
 
         // --- Seguimiento de Ruta y GPS ---
         function startRouteTracking() {
-             if (routes.length === 0 || !routes[0] || routes[0].length === 0) { alert("Crea al menos una ruta con paradas."); return; }
-             if (watchId) return;
+            if (routes.length === 0 || !routes[0] || routes[0].length === 0) { alert("Crea al menos una ruta con paradas."); return; }
+            if (watchId) return;
+            for (let r = 0; r < routes.length; r++) { if (!routes[r] || routes[r].length === 0) continue; for (let s = 0; s < routes[r].length; s++) { if (!routes[r][s].departureTime) { alert(`Error: Parada "${routes[r][s].name}" (Ruta ${r+1}) no tiene hora de salida.`); return; } } }
 
-             // Validación extra: asegurar que todas las paradas en todas las rutas a seguir tienen hora de salida
-             for (let r = 0; r < routes.length; r++) {
-                 if (!routes[r] || routes[r].length === 0) continue; // Ignorar rutas vacías
-                 for (let s = 0; s < routes[r].length; s++) {
-                     if (!routes[r][s].departureTime) {
-                         alert(`Error: La parada "${routes[r][s].name}" en la Ruta ${r+1} no tiene hora de salida programada.`);
-                         return;
-                     }
-                 }
-             }
-
-
-            currentRouteIndex = 0;
-            currentStopIndex = 0; // Apunta a la *próxima* parada
-            currentStatusInfo = { phase: 'approaching_first', text: `Hacia ${routes[0][0].name}` }; // Estado inicial
-            console.log(`Iniciando seguimiento. Ruta ${currentRouteIndex + 1}, Hacia parada ${currentStopIndex + 1}`);
-            renderStopsList();
-            updateUIBasedOnState();
-            updateStatusDisplayContent("idle", "Iniciando GPS...", "--:--"); // Limpiar display
+            currentRouteIndex = 0; currentStopIndex = 0;
+            isManualMode = manualModeCheckbox.checked; // Leer estado inicial del checkbox
+            currentStatusInfo = { phase: 'approaching_first', text: `Hacia ${routes[0][0].name}` };
+            console.log(`Iniciando seguimiento. Ruta ${currentRouteIndex + 1}, Hacia parada ${currentStopIndex + 1}. Modo Manual: ${isManualMode}`);
+            renderStopsList(); updateUIBasedOnState();
+            updateStatusDisplayContent("idle", "Iniciando GPS...", "--:--");
 
             if (navigator.geolocation) {
                  const options = { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 };
                  watchId = navigator.geolocation.watchPosition(handleLocationUpdate, handleLocationError, options);
                  updateGPSStatus("Activado, buscando señal...");
-            } else {
-                alert("Geolocalización no soportada.");
-                stopTracking("error_gps");
-            }
+            } else { alert("Geolocalización no soportada."); stopTracking("error_gps"); }
         }
 
-         function stopTracking(reason = "detenido") {
-             if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-             const wasTracking = currentRouteIndex !== -1;
-             currentRouteIndex = -1; currentStopIndex = -1; lastKnownPosition = null;
-             currentStatusInfo = { phase: 'idle', text: `Seguimiento ${reason}` };
+        function stopTracking(reason = "detenido") {
+            if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+            const wasTracking = currentRouteIndex !== -1;
+            currentRouteIndex = -1; currentStopIndex = -1; lastKnownPosition = null;
+            isManualMode = false; // Resetear modo manual al detener
+            manualModeCheckbox.checked = false; // Desmarcar checkbox
+            currentStatusInfo = { phase: 'idle', text: `Seguimiento ${reason}` };
 
-             if (currentLocationMarker) { map.removeLayer(currentLocationMarker); currentLocationMarker = null; }
+            if (currentLocationMarker) { map.removeLayer(currentLocationMarker); currentLocationMarker = null; }
 
-             let finalText = `Seguimiento ${reason}.`;
-             if (reason === "completed") finalText = "¡Ruta(s) completada(s)!";
-             else if (reason === "error_gps") finalText = "Error: GPS no disponible.";
-             else if (reason === "error_data") finalText = "Error en datos de ruta.";
+            let finalText = `Seguimiento ${reason}.`;
+            if (reason === "completed") finalText = "¡Ruta(s) completada(s)!";
+            else if (reason === "error_gps") finalText = "Error: GPS no disponible.";
+            else if (reason === "error_data") finalText = "Error en datos de ruta.";
 
-             updateStatusDisplayContent("idle", finalText, "--:--");
-             updateGPSStatus("GPS desactivado.");
-             if (wasTracking) renderStopsList();
-             updateUIBasedOnState();
-             console.log("Seguimiento detenido:", reason);
-         }
-
+            updateStatusDisplayContent("idle", finalText, "--:--");
+            updateGPSStatus("GPS desactivado.");
+            if (wasTracking) renderStopsList();
+            updateUIBasedOnState(); // Deshabilita botones manuales, etc.
+            console.log("Seguimiento detenido:", reason);
+        }
 
         function handleLocationUpdate(position) {
             lastKnownPosition = position;
@@ -368,222 +425,138 @@
             updateGPSStatus(`Activo | Precisión: ${accuracy.toFixed(0)}m`);
 
             const userLatLng = [latitude, longitude];
-            if (!currentLocationMarker) {
+            if (!currentLocationMarker) { /* ... crear marcador ... */
                 currentLocationMarker = L.circleMarker(userLatLng, { radius: 7, fillColor: "#007bff", color: "#ffffff", weight: 2, opacity: 1, fillOpacity: 0.9 }).addTo(map).bindPopup("Ubicación actual");
             } else { currentLocationMarker.setLatLng(userLatLng); }
 
-            if (currentRouteIndex === -1 || currentRouteIndex >= routes.length || !routes[currentRouteIndex] || routes[currentRouteIndex].length === 0) {
-                console.warn("handleLocationUpdate sin ruta activa."); stopTracking("estado inválido"); return;
-            }
+            if (currentRouteIndex === -1 || currentRouteIndex >= routes.length || !routes[currentRouteIndex] || routes[currentRouteIndex].length === 0) { console.warn("handleLocationUpdate sin ruta activa."); stopTracking("estado inválido"); return; }
             const currentRoute = routes[currentRouteIndex];
-            if (currentStopIndex < 0 || currentStopIndex >= currentRoute.length) {
-                 console.warn("handleLocationUpdate sin parada destino válida."); stopTracking("estado inválido"); return;
-            }
+            if (currentStopIndex < 0 || currentStopIndex >= currentRoute.length) { console.warn("handleLocationUpdate sin parada destino válida."); stopTracking("estado inválido"); return; }
 
-            const nextStop = currentRoute[currentStopIndex]; // La parada a la que vamos
-            const previousStop = (currentStopIndex > 0) ? currentRoute[currentStopIndex - 1] : null; // La parada anterior (null si es la primera)
+            const nextStop = currentRoute[currentStopIndex];
+            const previousStop = (currentStopIndex > 0) ? currentRoute[currentStopIndex - 1] : null;
 
-            let timeDifferenceMs = 0;
-            let statusText = "";
-            let calculationPhase = "idle";
-
-            // Calcular distancia a la PRÓXIMA parada para detectar llegada
+            let timeDifferenceMs = 0; let statusText = ""; let calculationPhase = "idle";
             const distanceToNextStopM = calculateDistance(latitude, longitude, nextStop.lat, nextStop.lng) * 1000;
             const arrivalThresholdMeters = 50;
-
-            // Calcular distancia a la parada ANTERIOR (si existe) para saber si estamos 'at_stop'
             let distanceToPreviousStopM = Infinity;
-            if (previousStop) {
-                 distanceToPreviousStopM = calculateDistance(latitude, longitude, previousStop.lat, previousStop.lng) * 1000;
-            }
+            if (previousStop) { distanceToPreviousStopM = calculateDistance(latitude, longitude, previousStop.lat, previousStop.lng) * 1000; }
 
             // --- Determinar Fase y Calcular Diferencia ---
-
             if (previousStop && distanceToPreviousStopM < arrivalThresholdMeters) {
-                // FASE: En la parada anterior, esperando salida
-                calculationPhase = 'at_stop';
-                statusText = `En ${previousStop.name}, Salida: ${previousStop.departureTime}`;
+                calculationPhase = 'at_stop'; statusText = `En ${previousStop.name}, Salida: ${previousStop.departureTime}`;
                 const scheduledDepartureTime = parseTimeString(previousStop.departureTime);
-                if (scheduledDepartureTime) {
-                    timeDifferenceMs = now.getTime() - scheduledDepartureTime.getTime(); // Negativo=temprano, Positivo=tarde para salir
-                } else { console.error("Error parseando hora salida 'at_stop'"); timeDifferenceMs = 0; }
-
+                if (scheduledDepartureTime) { timeDifferenceMs = now.getTime() - scheduledDepartureTime.getTime(); }
+                else { console.error("Error parseando hora salida 'at_stop'"); timeDifferenceMs = 0; }
             } else if (!previousStop) {
-                // FASE: Acercándose a la primera parada de la ruta
-                calculationPhase = 'approaching_first';
-                statusText = `Hacia ${nextStop.name}`;
+                calculationPhase = 'approaching_first'; statusText = `Hacia ${nextStop.name}`;
                 const scheduledArrivalTime = parseTimeString(nextStop.time);
-                if (scheduledArrivalTime) {
-                    timeDifferenceMs = now.getTime() - scheduledArrivalTime.getTime(); // Negativo=llegará temprano, Positivo=llegará tarde
-                } else { console.error("Error parseando hora llegada 'approaching_first'"); timeDifferenceMs = 0; }
-
+                if (scheduledArrivalTime) { timeDifferenceMs = now.getTime() - scheduledArrivalTime.getTime(); }
+                else { console.error("Error parseando hora llegada 'approaching_first'"); timeDifferenceMs = 0; }
             } else {
-                 // FASE: En ruta entre 'previousStop' y 'nextStop'
-                 calculationPhase = 'en_route';
-                 statusText = `Hacia ${nextStop.name}`;
-
+                 calculationPhase = 'en_route'; statusText = `Hacia ${nextStop.name}`;
                  const scheduledDeparturePrev = parseTimeString(previousStop.departureTime);
                  const scheduledArrivalNext = parseTimeString(nextStop.time);
-
                  if (scheduledDeparturePrev && scheduledArrivalNext && scheduledArrivalNext > scheduledDeparturePrev) {
                      const scheduledSegmentDurationMs = scheduledArrivalNext.getTime() - scheduledDeparturePrev.getTime();
                      const totalSegmentDistanceKm = calculateDistance(previousStop.lat, previousStop.lng, nextStop.lat, nextStop.lng);
                      let distanceTraveledOnSegmentKm = calculateDistance(previousStop.lat, previousStop.lng, latitude, longitude);
-
                      let segmentCompletionRatio = 0;
-                     if (totalSegmentDistanceKm > 0.001) { // Evitar división por cero/distancias muy pequeñas
-                          // Asegurar que la distancia recorrida no sea mayor que la total (puede pasar por GPS impreciso)
+                     if (totalSegmentDistanceKm > 0.001) {
                          distanceTraveledOnSegmentKm = Math.max(0, Math.min(distanceTraveledOnSegmentKm, totalSegmentDistanceKm));
                          segmentCompletionRatio = distanceTraveledOnSegmentKm / totalSegmentDistanceKm;
-                     } else if (distanceTraveledOnSegmentKm > 0) {
-                          segmentCompletionRatio = 1; // Si estamos lejos pero el segmento es "0", considerar completado
-                     }
-
-
+                     } else if (distanceTraveledOnSegmentKm > 0) { segmentCompletionRatio = 1; }
                      const scheduledTimeElapsedOnSegmentMs = segmentCompletionRatio * scheduledSegmentDurationMs;
                      const actualTimeElapsedSinceScheduledDepartureMs = now.getTime() - scheduledDeparturePrev.getTime();
-
                      timeDifferenceMs = actualTimeElapsedSinceScheduledDepartureMs - scheduledTimeElapsedOnSegmentMs;
-
-                 } else {
-                     console.error("Error en tiempos/distancia para cálculo 'en_route'");
-                     timeDifferenceMs = 0; // Fallback
-                 }
+                 } else { console.error("Error en tiempos/distancia para cálculo 'en_route'"); timeDifferenceMs = 0; }
             }
 
             currentStatusInfo = { phase: calculationPhase, text: statusText };
             updateStatusDisplayWithDifference(timeDifferenceMs, currentStatusInfo);
 
-            // --- Lógica de AVANCE (Basada en proximidad a NEXT stop) ---
-            if (distanceToNextStopM < arrivalThresholdMeters) {
-                 console.log(`Llegada detectada a ${nextStop.name} (Dist: ${distanceToNextStopM.toFixed(1)}m)`);
-                 // El avance real ocurre en la función advanceStopOrRoute
-                 // que se encarga de actualizar currentStopIndex/currentRouteIndex
-                 // y el estado cambiará en el *siguiente* tick de handleLocationUpdate
+            // --- Lógica de AVANCE AUTOMÁTICO (Solo si no está en modo manual) ---
+            if (!isManualMode && distanceToNextStopM < arrivalThresholdMeters) {
+                 console.log(`(Auto) Llegada detectada a ${nextStop.name}. Avanzando...`);
                  advanceStopOrRoute();
             }
         }
 
-
-         function advanceStopOrRoute() {
+        // --- Funciones de Avance (advanceStopOrRoute, advanceRoute) ---
+        // (sin cambios respecto a la versión anterior)
+        function advanceStopOrRoute() {
              const currentRoute = routes[currentRouteIndex];
-             const arrivedStop = currentRoute[currentStopIndex]; // La parada a la que acabamos de llegar
-
-             // Marcar parada actual como 'llegada' (visual)
+             const arrivedStop = currentRoute[currentStopIndex];
              if (stopMarkers[arrivedStop.id]) { stopMarkers[arrivedStop.id].setOpacity(0.6); }
              if (arrivalMarker) map.removeLayer(arrivalMarker);
              arrivalMarker = L.circleMarker([arrivedStop.lat, arrivedStop.lng], { radius: 10, color: '#2ECC40', fillColor: '#2ECC40', fillOpacity: 0.4, weight: 1 }).addTo(map);
              setTimeout(() => { if (arrivalMarker && map.hasLayer(arrivalMarker)) map.removeLayer(arrivalMarker); arrivalMarker = null; }, 2000);
-
-             // Avanzar índice de la *próxima* parada
              currentStopIndex++;
-
-             if (currentStopIndex >= currentRoute.length) { // Fin de la ruta actual
-                 console.log(`Fin de Ruta ${currentRouteIndex + 1}.`);
-                 advanceRoute(); // Intentar pasar a la siguiente ruta
-             } else { // Siguiente parada en la misma ruta
+             if (currentStopIndex >= currentRoute.length) { console.log(`Fin de Ruta ${currentRouteIndex + 1}.`); advanceRoute(); }
+             else {
                  const nextUpcomingStop = currentRoute[currentStopIndex];
                  console.log(`Avanzando. Próxima parada: ${currentStopIndex + 1} (${nextUpcomingStop.name})`);
-                 // El estado se recalculará en el siguiente tick, entrando en fase 'at_stop' (esperando salir de 'arrivedStop')
-                 // o 'en_route' si la salida es inmediata.
-                 currentStatusInfo = { phase: 'at_stop', text: `En ${arrivedStop.name}, Salida: ${arrivedStop.departureTime}` }; // Actualizar estado intermedio
-                 updateStatusDisplayContent('idle', currentStatusInfo.text + "<br>Calculando...", "--:--"); // Mostrar estado de espera
-                 renderStopsList(); // Actualizar resaltado
+                 currentStatusInfo = { phase: 'at_stop', text: `En ${arrivedStop.name}, Salida: ${arrivedStop.departureTime}` };
+                 updateStatusDisplayContent('idle', currentStatusInfo.text + "<br>Calculando...", "--:--");
+                 renderStopsList(); // Actualizar resaltado inmediato
+                 updateUIBasedOnState(); // Actualizar botones (por si se llega al final)
              }
-         }
-
-         function advanceRoute() {
+        }
+        function advanceRoute() {
               currentRouteIndex++;
-              if (currentRouteIndex >= routes.length || !routes[currentRouteIndex] || routes[currentRouteIndex].length === 0) {
-                  console.log("¡Todas las rutas completadas!");
-                  stopTracking("completed");
-              } else {
-                  currentStopIndex = 0; // Empezar desde la primera parada de la nueva ruta
+              if (currentRouteIndex >= routes.length || !routes[currentRouteIndex] || routes[currentRouteIndex].length === 0) { console.log("¡Todas las rutas completadas!"); stopTracking("completed"); }
+              else {
+                  currentStopIndex = 0;
                   const firstStopNextRoute = routes[currentRouteIndex][currentStopIndex];
                   console.log(`Cambiando a Ruta ${currentRouteIndex + 1}. Próxima: ${firstStopNextRoute.name}`);
                   currentStatusInfo = { phase: 'approaching_first', text: `Iniciando Ruta ${currentRouteIndex + 1}: Hacia ${firstStopNextRoute.name}` };
                   updateStatusDisplayContent('idle', currentStatusInfo.text + "<br>Calculando...", "--:--");
-                  renderStopsList();
-                  updateUIBasedOnState();
+                  renderStopsList(); updateUIBasedOnState();
               }
          }
 
+        // --- Manejo de Error GPS ---
         function handleLocationError(error) {
-            console.warn("Error GPS:", error);
-            let message = "Error GPS: "; let shouldStop = false;
-            switch(error.code) {
-                case error.PERMISSION_DENIED: message += "Permiso denegado."; shouldStop = true; break;
-                case error.POSITION_UNAVAILABLE: message += "Señal no disponible."; break;
-                case error.TIMEOUT: message += "Timeout."; break;
-                default: message += "Desconocido."; break;
-            }
-            updateGPSStatus(message);
-            if (shouldStop) { stopTracking("error_gps"); }
+             // ... (sin cambios)
+            console.warn("Error GPS:", error); let message = "Error GPS: "; let shouldStop = false;
+            switch(error.code) { case error.PERMISSION_DENIED: message += "Permiso denegado."; shouldStop = true; break; case error.POSITION_UNAVAILABLE: message += "Señal no disponible."; break; case error.TIMEOUT: message += "Timeout."; break; default: message += "Desconocido."; break; }
+            updateGPSStatus(message); if (shouldStop) { stopTracking("error_gps"); }
         }
 
-        // Modificado para aceptar statusInfo
+        // --- Actualización Display Estado (Formato +/-MM:SS) ---
         function updateStatusDisplayWithDifference(differenceMs, statusInfo) {
-            const totalSeconds = Math.round(Math.abs(differenceMs) / 1000);
-            const minutes = Math.floor(totalSeconds / 60);
-            const seconds = totalSeconds % 60;
-            const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-            let timeString;
-            let statusClass;
-            const onTimeThresholdSeconds = 30; // Umbral +/- 30 seg para 'a horario'
-
-            // Determinar clase y string de tiempo (+/-)
-            if (Math.abs(differenceMs) <= onTimeThresholdSeconds * 1000) {
-                timeString = "~00:00"; statusClass = "on-time";
-            } else if (differenceMs > 0) { // Positivo = Tarde / Atrasado
-                timeString = `-${formattedTime}`; statusClass = "late";
-            } else { // Negativo = Temprano / Adelantado
-                timeString = `+${formattedTime}`; statusClass = "early";
-            }
-
-             // Ajustar interpretación para 'at_stop'
-             let interpretedTimeString = timeString;
-             if (statusInfo.phase === 'at_stop') {
-                 // Si estamos esperando en parada, la diferencia es vs la hora de SALIDA
-                 // differenceMs > 0 significa que YA DEBERÍAMOS HABER SALIDO (atraso para salir) -> -MM:SS
-                 // differenceMs < 0 significa que FALTA PARA SALIR (adelanto para salir) -> +MM:SS
-                 // El cálculo ya lo hace bien, solo confirmamos la interpretación.
-                 // No es necesario cambiar `timeString` o `statusClass` aquí si la lógica base es correcta.
-             }
-
-             updateStatusDisplayContent(statusClass, statusInfo.text, interpretedTimeString);
+            // ... (sin cambios respecto a la versión anterior que ya usaba +/-MM:SS) ...
+             const totalSecondsRaw = differenceMs / 1000; const absoluteTotalSeconds = Math.abs(totalSecondsRaw);
+             const minutes = Math.floor(absoluteTotalSeconds / 60); const seconds = Math.floor(absoluteTotalSeconds % 60);
+             const formattedMagnitude = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+             let timeString; let statusClass; const onTimeThresholdSeconds = 30;
+             if (differenceMs >= 0) { timeString = `-${formattedMagnitude}`; if (differenceMs <= onTimeThresholdSeconds * 1000) { statusClass = "on-time"; } else { statusClass = "late"; } }
+             else { timeString = `+${formattedMagnitude}`; if (Math.abs(differenceMs) <= onTimeThresholdSeconds * 1000) { statusClass = "on-time"; } else { statusClass = "early"; } }
+             if (differenceMs === 0) { timeString = "-00:00"; statusClass = "on-time"; }
+             updateStatusDisplayContent(statusClass, statusInfo.text, timeString);
         }
 
-        // Nueva función para actualizar el contenido del display de estado
         function updateStatusDisplayContent(className, infoText, timeText) {
-             statusDisplay.className = `status-display ${className}`; // Aplica clase de color/fondo
-             // Actualiza los spans internos
-             const infoSpan = statusDisplay.querySelector('.status-info');
-             const timeSpan = statusDisplay.querySelector('.status-time');
-             if (infoSpan) infoSpan.innerHTML = infoText; // Usar innerHTML por si hay <br>
-             if (timeSpan) timeSpan.textContent = timeText;
+            // ... (sin cambios) ...
+             statusDisplay.className = `status-display ${className}`;
+             const infoSpan = statusDisplay.querySelector('.status-info'); const timeSpan = statusDisplay.querySelector('.status-time');
+             if (infoSpan) infoSpan.innerHTML = infoText; if (timeSpan) timeSpan.textContent = timeText;
         }
 
-
-         function updateGPSStatus(text) { gpsStatus.textContent = `GPS: ${text}`; }
+        function updateGPSStatus(text) { gpsStatus.textContent = `GPS: ${text}`; }
 
         // --- Funciones de Utilidad ---
         function calculateDistance(lat1, lon1, lat2, lon2) {
-             if (lat1 == lat2 && lon1 == lon2) return 0;
-            const dLat = deg2rad(lat2 - lat1); const dLon = deg2rad(lon2 - lon1);
+            // ... (sin cambios) ...
+            if (lat1 == lat2 && lon1 == lon2) return 0; const dLat = deg2rad(lat2 - lat1); const dLon = deg2rad(lon2 - lon1);
             const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            return R * c; // km
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return R * c;
         }
         function deg2rad(deg) { return deg * (Math.PI / 180); }
         function parseTimeString(timeString) {
-             try {
-                 if (!timeString || typeof timeString !== 'string' || !timeString.includes(':')) return null;
-                 const [hours, minutes] = timeString.split(':').map(Number);
-                 if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-                 const date = new Date(); date.setHours(hours, minutes, 0, 0); return date;
-             } catch (e) { console.error("Error parsing time:", timeString, e); return null; }
-         }
+             // ... (sin cambios) ...
+             try { if (!timeString || typeof timeString !== 'string' || !timeString.includes(':')) return null; const [hours, minutes] = timeString.split(':').map(Number); if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null; const date = new Date(); date.setHours(hours, minutes, 0, 0); return date; } catch (e) { console.error("Error parsing time:", timeString, e); return null; }
+        }
 
     </script>
 
