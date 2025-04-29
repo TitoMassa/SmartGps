@@ -1,936 +1,272 @@
-<!DOCTYPE html>
-<html lang="es">
+<!DOCTYPE html><html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Smart Move Pro</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
-    <style>
-        /* --- Base & Layout --- */
-        :root {
-            --primary-color: #007bff;
-            --primary-hover: #0056b3;
-            --secondary-color: #6c757d;
-            --secondary-hover: #5a6268;
-            --success-color: #198754;
-            --success-hover: #157347;
-            --danger-color: #dc3545;
-            --danger-hover: #bb2d3b;
-            --warning-color: #ffca2c;
-            --warning-hover: #ffc107;
-            --info-color: #0dcaf0;
-            --info-hover: #31d2f2;
-            --light-gray: #f8f9fa;
-            --medium-gray: #dee2e6;
-            --dark-gray: #495057;
-            --text-color: #212529;
-            --border-radius: 0.3rem;
-            --box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif; background-color: #f0f2f5; font-size: 14px; color: var(--text-color); }
-        body { display: flex; flex-direction: column; }
-        header { background-color: #343a40; color: white; padding: 10px 15px; text-align: center; flex-shrink: 0; font-size: 1.2em; box-shadow: var(--box-shadow); }
-        main { display: flex; flex-direction: column; flex: 1; overflow: hidden; padding: 8px; gap: 8px; }
-
-        button { cursor: pointer; border: none; border-radius: var(--border-radius); padding: 9px 12px; font-size: 0.9rem; transition: background-color 0.2s ease, opacity 0.2s ease; font-weight: 500; }
-        button:disabled { cursor: not-allowed !important; background-color: #cccccc !important; color: #666 !important; opacity: 0.65; }
-        input[readonly] { background-color: #e9ecef !important; cursor: default; }
-        input[type="text"], input[type="time"], input[type="number"] {
-            width: 100%; padding: 9px 12px; margin-bottom: 8px; box-sizing: border-box; border: 1px solid var(--medium-gray); border-radius: var(--border-radius); font-size: 0.9rem;
-        }
-        input[type="time"] { appearance: none; /* Better cross-browser time input appearance */ }
-
-        /* --- Mapa --- */
-        #map-container { height: 45vh; display: flex; flex-direction: column; background-color: white; border-radius: var(--border-radius); box-shadow: var(--box-shadow); margin-bottom: 0; flex-shrink: 0; }
-        #map-header { padding: 9px 12px; background-color: var(--light-gray); border-bottom: 1px solid var(--medium-gray); border-radius: var(--border-radius) var(--border-radius) 0 0; font-weight: 500; font-size: 0.9em; text-align: center; flex-shrink: 0; color: var(--dark-gray); }
-        #map { flex: 1; border-radius: 0 0 var(--border-radius) var(--border-radius); background-color: #e0e0e0; }
-        .leaflet-control-zoom { transform: scale(1.1); transform-origin: top left; }
-        .leaflet-marker-icon { transition: opacity 0.3s ease; }
-
-        /* --- Controles --- */
-        #controls { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 12px; background-color: white; border-radius: var(--border-radius); box-shadow: var(--box-shadow); overflow-y: auto; width: auto; }
-        .control-section { border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 12px; }
-        .control-section:last-child { border-bottom: none; margin-bottom: 0; }
-        .control-section h3 { margin-top: 0; margin-bottom: 10px; font-size: 1.05em; color: #343a40; font-weight: 600; padding-bottom: 5px; border-bottom: 1px solid #eee; }
-
-        /* --- Estado y GPS --- */
-        #status-display { padding: 12px; border-radius: var(--border-radius); text-align: center; font-size: 1.2em; font-weight: bold; line-height: 1.3; min-height: 4em; display: flex; flex-direction: column; justify-content: center; transition: background-color 0.3s ease, border-color 0.3s ease; }
-        #status-display .status-info { font-size: 0.85em; font-weight: 500; color: var(--dark-gray); margin-bottom: 4px;}
-        #status-display .status-time { font-size: 1.4em; font-weight: 700; }
-        #status-display.on-time { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
-        #status-display.late { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
-        #status-display.early { background-color: #cff4fc; color: #055160; border: 1px solid #b6effb; }
-        #status-display.idle { background-color: #e9ecef; color: var(--dark-gray); border: 1px solid var(--medium-gray); font-size: 1em; justify-content: center; }
-        #gps-status { font-size: 0.8em; text-align: center; color: var(--secondary-color); margin-top: 8px; padding: 0; }
-        #tracking-controls { display: flex; gap: 10px; margin-top: 10px;}
-        #tracking-controls button { flex: 1; }
-        #startTrackingBtn { background-color: var(--primary-color); color: white; }
-        #startTrackingBtn:hover:not(:disabled) { background-color: var(--primary-hover); }
-        #stopTrackingBtn { background-color: var(--danger-color); color: white; }
-        #stopTrackingBtn:hover:not(:disabled) { background-color: var(--danger-hover); }
-
-        /* --- Modo Avance --- */
-        #navigation-mode h3 { font-size: 1em; }
-        #navigation-mode-controls { display: flex; align-items: center; gap: 15px; margin-top: 8px; flex-wrap: wrap; }
-        #navigation-mode-controls label { display: flex; align-items: center; font-size: 0.9em; gap: 5px; color: var(--dark-gray); }
-        #manual-buttons { display: flex; gap: 10px; flex-grow: 1; }
-        #manual-buttons button { flex: 1; margin-bottom: 0; background-color: var(--secondary-color); color: white; padding: 7px 6px; font-size: 0.85em; }
-        #manual-buttons button:hover:not(:disabled) { background-color: var(--secondary-hover); }
-
-        /* --- Formulario Añadir/Editar Parada --- */
-        #add-edit-stop-form label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.9em; color: var(--dark-gray); }
-        #add-edit-stop-form .coord-inputs, #add-edit-stop-form .time-inputs { display: flex; gap: 10px; margin-bottom: 10px; }
-        #add-edit-stop-form .coord-inputs input, #add-edit-stop-form .time-inputs > div { flex: 1; }
-        #add-edit-stop-form .form-actions { display: flex; gap: 10px; margin-top: 8px; }
-        #add-edit-stop-form .form-actions button { flex: 1; margin-bottom: 0; }
-        #addEditStopBtn { background-color: var(--primary-color); color: white; }
-        #addEditStopBtn:hover:not(:disabled) { background-color: var(--primary-hover); }
-        #addEditStopBtn.update-mode { background-color: var(--warning-color); color: var(--text-color); }
-        #addEditStopBtn.update-mode:hover:not(:disabled) { background-color: var(--warning-hover); }
-        #cancelEditBtn { background-color: var(--secondary-color); color: white; display: none; }
-        #cancelEditBtn:hover:not(:disabled) { background-color: var(--secondary-hover); }
-        body.editing-stop #cancelEditBtn { display: block; }
-
-        /* --- Gestión Rutas (Lista y botones) --- */
-        #route-management label { font-weight: bold; font-size: 0.85em; }
-        #route-indicator { font-size: 0.85em; color: var(--secondary-color); margin-bottom: 10px; text-align: center; font-weight: 500; }
-        #stops-list { list-style: none; padding: 0; margin: 10px 0 0 0; max-height: 130px; overflow-y: auto; border: 1px solid var(--medium-gray); border-radius: var(--border-radius); background-color: white; }
-        #stops-list li { padding: 9px 12px; border-bottom: 1px solid #eee; font-size: 0.9em; display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: default; transition: background-color 0.2s ease; }
-        #stops-list li:last-child { border-bottom: none; }
-        body:not(.tracking-active):not(.editing-stop) #stops-list li { cursor: pointer; }
-        body:not(.tracking-active):not(.editing-stop) #stops-list li:hover { background-color: var(--light-gray); }
-        #stops-list li.editing { background-color: #fff3cd !important; font-weight: 600; border-left: 3px solid var(--warning-color); padding-left: 9px; }
-        #stops-list li.active-stop { background-color: #cfe2ff !important; font-weight: 600; color: #0a58ca; border-left: 3px solid var(--primary-color); padding-left: 9px; }
-        #stops-list li .stop-details { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-        #stops-list li .stop-times { font-size: 0.9em; color: var(--dark-gray); text-align: right; white-space: nowrap; }
-        #stops-list li .stop-actions { flex-shrink: 0; }
-        #stops-list li .stop-actions button { background-color: transparent; color: var(--danger-color); border: none; padding: 2px; font-size: 1.1em; margin-left: 5px; line-height: 1; opacity: 0.7; }
-        #stops-list li:hover .stop-actions button { opacity: 1; } /* Mostrar botón al pasar por encima */
-        #stops-list li .stop-actions button:hover:not(:disabled) { background-color: rgba(220, 53, 69, 0.1); }
-        body.tracking-active #stops-list li .stop-actions button { display: none; }
-
-        #route-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 12px; }
-        #route-actions button { padding: 9px 6px; font-size: 0.85em; width: 100%; }
-        #finishRouteBtn { background-color: var(--success-color); color: white; }
-        #finishRouteBtn:hover:not(:disabled) { background-color: var(--success-hover); }
-        #saveRoutesBtn { background-color: var(--info-color); color: var(--text-color); }
-        #saveRoutesBtn:hover:not(:disabled) { background-color: #31d2f2; }
-        #loadRoutesBtn { background-color: var(--warning-color); color: var(--text-color);}
-        #loadRoutesBtn:hover:not(:disabled) { background-color: var(--warning-hover); }
-        #clearAllBtn { background-color: var(--danger-color); color: white; }
-        #clearAllBtn:hover:not(:disabled) { background-color: var(--danger-hover); }
-
-        /* --- Toast --- */
-        .toast { position: fixed; bottom: -50px; /* Start hidden below */ left: 50%; transform: translateX(-50%); background-color: rgba(52, 58, 64, 0.9); color: white; padding: 12px 22px; border-radius: var(--border-radius); font-size: 0.9em; z-index: 10000; opacity: 0; transition: opacity 0.4s ease, bottom 0.4s ease; pointer-events: none; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        .toast.show { opacity: 1; bottom: 25px; }
-
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Move Pro</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #f5f5f5;
+    }
+    #map {
+      width: 100%;
+      height: 40vh;
+    }
+    .controls {
+      width: 95%;
+      max-width: 480px;
+      background: #fff;
+      padding: 1rem;
+      border-radius: 1rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-top: -2rem;
+      z-index: 1000;
+    }
+    .controls h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.25rem;
+    }
+    .controls label {
+      display: block;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .controls input, .controls button, .controls select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.25rem;
+      font-size: 1rem;
+    }
+    .controls table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+    }
+    .controls th, .controls td {
+      border: 1px solid #ddd;
+      padding: 0.5rem;
+      font-size: 0.85rem;
+      text-align: center;
+    }
+    .controls .status {
+      font-size: 1.5rem;
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+    .btn-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .btn-group button { flex: 1; }
+  </style>
 </head>
-<body class="">
-
-    <header><h1>Smart Move Pro</h1></header>
-
-    <main>
-        <div id="map-container">
-            <div id="map-header">Mapa Interactivo</div>
-            <div id="map">Cargando mapa...</div>
-        </div>
-
-        <div id="controls">
-            <!-- Estado y Control de Seguimiento -->
-            <section id="status-section" class="control-section">
-                <h3>Estado Actual</h3>
-                <div id="status-display" class="idle">
-                    <span class="status-info">Carga o crea rutas</span>
-                    <span class="status-time">--:--</span>
-                </div>
-                <div id="tracking-controls">
-                    <button id="startTrackingBtn" disabled aria-label="Iniciar Seguimiento">Iniciar</button>
-                    <button id="stopTrackingBtn" disabled aria-label="Detener Seguimiento">Detener</button>
-                </div>
-                <p id="gps-status">GPS: Verificando...</p>
-            </section>
-
-            <!-- Modo de Avance -->
-            <section id="navigation-mode" class="control-section">
-                <h3>Modo de Avance</h3>
-                <div id="navigation-mode-controls">
-                    <label for="manualModeCheckbox"><input type="checkbox" id="manualModeCheckbox" disabled> Manual</label>
-                    <div id="manual-buttons">
-                        <button id="prevBtn" disabled aria-label="Ir a parada anterior"> < Anterior </button>
-                        <button id="nextBtn" disabled aria-label="Ir a parada siguiente"> Siguiente > </button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Añadir/Editar Parada -->
-            <section id="add-edit-stop-form" class="control-section" novalidate>
-                <h3 id="add-edit-stop-title">Añadir Parada (Ruta 1)</h3>
-                <input type="hidden" id="editingStopId">
-                <label for="stop-lat">Ubicación (Toca el mapa):</label>
-                <div class="coord-inputs">
-                    <input type="number" id="stop-lat" step="any" placeholder="Latitud" readonly aria-label="Latitud">
-                    <input type="number" id="stop-lng" step="any" placeholder="Longitud" readonly aria-label="Longitud">
-                </div>
-                <label for="stop-name">Nombre Parada:</label>
-                <input type="text" id="stop-name" placeholder="Ej: Terminal Central">
-                <div class="time-inputs">
-                    <div><label for="stop-time">Llegada (HH:MM):</label><input type="time" id="stop-time" required></div>
-                    <div><label for="stop-departure-time">Salida (HH:MM):</label><input type="time" id="stop-departure-time" required></div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" id="addEditStopBtn">Añadir Parada</button>
-                    <button type="button" id="cancelEditBtn" aria-label="Cancelar edición">Cancelar Edición</button>
-                </div>
-            </section>
-
-            <!-- Gestión de Rutas -->
-            <section id="route-management" class="control-section">
-                <h3 id="route-list-title">Editando Ruta 1</h3>
-                <div id="route-indicator">Total Rutas: 0</div>
-                <ul id="stops-list" aria-live="polite"><li>Cargando paradas...</li></ul>
-                <div id="route-actions">
-                    <button id="finishRouteBtn" disabled aria-label="Finalizar ruta actual y empezar la siguiente">Finalizar/Nueva</button>
-                    <button id="saveRoutesBtn" aria-label="Guardar todas las rutas creadas">Guardar</button>
-                    <button id="loadRoutesBtn" aria-label="Cargar rutas previamente guardadas">Cargar</button>
-                    <button id="clearAllBtn" aria-label="Borrar todas las rutas y paradas">Borrar Todo</button>
-                </div>
-            </section>
-        </div>
-    </main>
-
-    <!-- Toast para feedback -->
-    <div id="toast-feedback" class="toast" role="alert" aria-live="assertive">Mensaje</div>
-
-    <script>
-        /**
-         * Smart Move Pro Application Logic
-         * Handles route creation, tracking, GPS, time calculation, and UI updates.
-         */
-        const App = (() => {
-            // --- Constants ---
-            const LOCAL_STORAGE_KEY = 'smartMoveProRoutes_v3'; // Incremented version
-            const R = 6371; // Earth radius in km
-            const ARRIVAL_THRESHOLD_METERS = 50;
-            const ON_TIME_THRESHOLD_SECONDS = 30;
-            const DEFAULT_LAT = -34.6037; // Buenos Aires
-            const DEFAULT_LNG = -58.3816;
-            const DEFAULT_ZOOM = 12;
-            const USER_LOC_ZOOM = 15;
-
-            // --- State ---
-            let map;
-            let routes = [[]];
-            let currentLocationMarker = null;
-            let stopMarkers = {}; // { stopId: marker }
-            let currentRouteIndex = -1;
-            let currentStopIndex = -1;
-            let currentRouteBeingBuiltIndex = 0;
-            let editingStopId = null;
-            let watchId = null;
-            let lastKnownPosition = null;
-            let arrivalMarker = null;
-            let currentStatusInfo = { phase: 'idle', text: 'Carga o crea rutas' };
-            let isManualMode = false;
-            let toastTimeout = null;
-            let initialLocationSet = false;
-
-            // --- DOM Elements Cache ---
-            // (Defined within an immediately invoked function expression to avoid global pollution)
-            const DOMElements = {};
-
-            // --- Initialization ---
-            function initializeApp() {
-                cacheDOMElements();
-                initializeMap();
-                loadInitialData(); // Load from localStorage
-                bindEventListeners();
-                updateUIBasedOnState(); // Reflect initial state
-                requestGPSPermission(); // Get initial location & center map
-                console.log("Smart Move Pro Initialized");
-            }
-
-            function cacheDOMElements() {
-                const ids = [
-                    'map', 'stop-name', 'stop-time', 'stop-departure-time', 'stop-lat', 'stop-lng',
-                    'addEditStopBtn', 'cancelEditBtn', 'editingStopId', 'finishRouteBtn', 'stops-list',
-                    'startTrackingBtn', 'stopTrackingBtn', 'status-display', 'gps-status',
-                    'add-edit-stop-title', 'route-list-title', 'route-indicator', 'manualModeCheckbox',
-                    'prevBtn', 'nextBtn', 'saveRoutesBtn', 'loadRoutesBtn', 'clearAllBtn', 'toast-feedback'
-                ];
-                ids.forEach(id => {
-                    // Convert kebab-case to camelCase for property names
-                    const camelCaseId = id.replace(/-([a-z])/g, g => g[1].toUpperCase());
-                    DOMElements[camelCaseId] = document.getElementById(id);
-                });
-                 // Add elements selected differently
-                 DOMElements.body = document.body;
-                 DOMElements.statusInfoSpan = document.querySelector('#status-display .status-info');
-                 DOMElements.statusTimeSpan = document.querySelector('#status-display .status-time');
-                 DOMElements.mapContainer = DOMElements.map; // Use the map div itself
-                console.log("DOM elements cached.");
-            }
-
-             function requestGPSPermission() {
-                 if (!navigator.geolocation) {
-                     updateGPSStatus("GPS no soportado.");
-                     centerMapFallback();
-                     return;
-                 }
-                 console.log("Solicitando ubicación inicial...");
-                 updateGPSStatus("Solicitando ubicación inicial...");
-                 navigator.geolocation.getCurrentPosition(
-                     handleInitialLocationSuccess,
-                     handleInitialLocationError,
-                     { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 } // Allow cached for 1 min
-                 );
-             }
-
-             function handleInitialLocationSuccess(pos) {
-                 console.log("Ubicación inicial obtenida:", pos.coords);
-                 updateGPSStatus(`GPS Listo | Precisión: ${pos.coords.accuracy.toFixed(0)}m`);
-                 if (map && !initialLocationSet) {
-                     map.setView([pos.coords.latitude, pos.coords.longitude], USER_LOC_ZOOM);
-                     initialLocationSet = true;
-                     console.log("Mapa centrado en ubicación inicial.");
-                 }
-             }
-
-             function handleInitialLocationError(err) {
-                 console.warn("Error inicial GPS:", err.message);
-                 let msg = "GPS inicial no disponible.";
-                 if (err.code === err.PERMISSION_DENIED) {
-                     msg = "Permiso GPS denegado.";
-                     showToast("Permiso de ubicación necesario.", 5000);
-                 } else {
-                      showToast("No se pudo obtener la ubicación inicial.", 3000);
-                 }
-                 updateGPSStatus(msg);
-                 centerMapFallback();
-             }
-
-            function initializeMap() {
-                 try {
-                    map = L.map(DOMElements.mapContainer, { zoomControl: true });
-                    map.zoomControl.setPosition('bottomright');
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OSM</a>',
-                        maxZoom: 19, minZoom: 5
-                    }).addTo(map);
-                    map.on('click', handleMapClick);
-                    console.log("Mapa inicializado. Esperando ubicación...");
-                    centerMapFallback(); // Set initial view to fallback immediately
-                 } catch (error) {
-                      console.error("Error inicializando Leaflet:", error);
-                      DOMElements.mapContainer.innerHTML = '<p style="padding: 20px; text-align: center; color: red;">Error al cargar el mapa.</p>';
-                 }
-            }
-
-            function centerMapFallback() {
-                 // Set the view only if the map exists and hasn't been centered by GPS yet.
-                 // This prevents overriding the GPS-based centering if it happens quickly.
-                 if (map && !initialLocationSet) {
-                     map.setView([DEFAULT_LAT, DEFAULT_LNG], DEFAULT_ZOOM);
-                     // Don't set initialLocationSet = true here, allow GPS to override if it works
-                     console.log("Mapa centrado en ubicación por defecto (temporal).");
-                 }
-             }
-
-            function loadInitialData() {
-                loadRoutesFromLocalStorage();
-            }
-
-            function bindEventListeners() {
-                DOMElements.addEditStopBtn.addEventListener('click', handleAddOrUpdateStop);
-                DOMElements.cancelEditBtn.addEventListener('click', cancelEditMode);
-                DOMElements.finishRouteBtn.addEventListener('click', finishCurrentRoute);
-                DOMElements.startTrackingBtn.addEventListener('click', startRouteTracking);
-                DOMElements.stopTrackingBtn.addEventListener('click', () => stopTracking('manual'));
-                DOMElements.manualModeCheckbox.addEventListener('change', toggleManualMode);
-                DOMElements.prevBtn.addEventListener('click', goToPreviousStopOrRoute);
-                DOMElements.nextBtn.addEventListener('click', goToNextStopOrRoute);
-                DOMElements.saveRoutesBtn.addEventListener('click', saveRoutesToLocalStorage);
-                DOMElements.loadRoutesBtn.addEventListener('click', handleLoadRoutesClick);
-                DOMElements.clearAllBtn.addEventListener('click', handleClearAllClick);
-                DOMElements.stopsList.addEventListener('click', handleStopListClick);
-                console.log("Event listeners bound.");
-            }
-
-            // --- Feedback Toast ---
-            function showToast(message, duration = 3000) {
-                if (!DOMElements.toastFeedback) return; // Safety check
-                if (toastTimeout) clearTimeout(toastTimeout);
-                DOMElements.toastFeedback.textContent = message;
-                DOMElements.toastFeedback.classList.add('show');
-                toastTimeout = setTimeout(() => {
-                    DOMElements.toastFeedback.classList.remove('show');
-                }, duration);
-            }
-
-            // --- LocalStorage Persistence ---
-            function saveRoutesToLocalStorage() {
-                try {
-                    const routesToSave = routes.filter(route => route && route.length > 0);
-                    if (routesToSave.length === 0) { showToast("No hay rutas con paradas para guardar."); return; }
-                    // Deep validation before saving
-                    let isValid = true;
-                    routesToSave.forEach(route => route.forEach(stop => {
-                        if (!validateStopStructure(stop)) isValid = false;
-                    }));
-                    if (!isValid) { showToast("Error: Datos de parada inválidos. No se guardó.", 5000); return; }
-
-                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(routesToSave));
-                    showToast(`Rutas guardadas (${routesToSave.length} ruta(s)).`);
-                    console.log("Rutas guardadas.");
-                } catch (error) {
-                    console.error("Error al guardar:", error);
-                    showToast("Error al guardar rutas.", 5000);
-                }
-            }
-
-            function loadRoutesFromLocalStorage() {
-                const routesJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
-                let loadedSuccessfully = false;
-                routes = [[]]; // Reset state first
-                currentRouteBeingBuiltIndex = 0;
-
-                if (routesJSON) {
-                    try {
-                        const parsedRoutes = JSON.parse(routesJSON);
-                        if (parsedRoutes && Array.isArray(parsedRoutes)) {
-                            const validLoadedRoutes = parsedRoutes
-                                .map(route => Array.isArray(route) ? route.filter(validateStopStructure) : null)
-                                .filter(route => route !== null && route.length > 0);
-
-                            if (validLoadedRoutes.length > 0) {
-                                routes = validLoadedRoutes;
-                                routes.push([]); // Add empty route for editing
-                                currentRouteBeingBuiltIndex = routes.length - 1;
-                                loadedSuccessfully = true;
-                                console.log(`Rutas válidas cargadas: ${validLoadedRoutes.length}`);
-                            } else {
-                                console.warn("Datos en localStorage, pero ninguna ruta/parada válida.");
-                            }
-                        } else { console.error("Formato raíz inválido en localStorage."); }
-                    } catch (error) { console.error("Error parseando localStorage:", error); }
-                } else { console.log("No hay rutas guardadas."); }
-
-                if (!loadedSuccessfully) { routes = [[]]; currentRouteBeingBuiltIndex = 0; } // Ensure initial state
-
-                removeAllStopMarkers();
-                routes.forEach(route => route.forEach(addStopMarker));
-                renderStopsList();
-                updateUIBasedOnState(); // Update UI after loading
-                return loadedSuccessfully;
-            }
-
-            function handleLoadRoutesClick() {
-                if (currentRouteIndex !== -1) { showToast("Detén el seguimiento antes de cargar."); return; }
-                if (editingStopId) cancelEditMode();
-                if (confirm("¿Cargar rutas guardadas? Se reemplazarán las actuales.")) {
-                    if (loadRoutesFromLocalStorage()) { showToast("Rutas cargadas."); }
-                    else { showToast("No se encontraron rutas válidas o hubo un error.", 4000); }
-                }
-            }
-
-            function handleClearAllClick() {
-                if (currentRouteIndex !== -1) { showToast("Detén el seguimiento antes de borrar."); return; }
-                if (editingStopId) cancelEditMode();
-                if (confirm("¿BORRAR TODAS las rutas y paradas?")) {
-                     routes = [[]]; currentRouteBeingBuiltIndex = 0; editingStopId = null;
-                     removeAllStopMarkers(); renderStopsList(); updateUIBasedOnState();
-                     localStorage.removeItem(LOCAL_STORAGE_KEY);
-                     showToast("Todas las rutas borradas.");
-                     console.log("Rutas borradas y localStorage limpiado.");
-                }
-            }
-
-            // --- Stop CRUD & Editing ---
-            function handleAddOrUpdateStop() {
-                if (currentRouteIndex !== -1) { showToast("No se puede modificar durante el seguimiento."); return; }
-                if (editingStopId) updateStop(); else addStop();
-            }
-
-            function validateStopStructure(stop) { // Used for loading/saving validation
-                 return stop && typeof stop.id === 'number' && typeof stop.name === 'string' &&
-                        typeof stop.time === 'string' && parseTimeString(stop.time) &&
-                        typeof stop.departureTime === 'string' && parseTimeString(stop.departureTime) &&
-                        typeof stop.lat === 'number' && typeof stop.lng === 'number' &&
-                        parseTimeString(stop.departureTime) >= parseTimeString(stop.time);
-            }
-
-             function validateStopInputData(name, arrivalTime, departureTime, lat, lng) { // Used for form validation
-                 if (isNaN(lat) || isNaN(lng)) { showToast("Ubicación inválida. Toca el mapa."); return false; }
-                 if (!arrivalTime || !departureTime) { showToast("Ingresa hora de llegada y salida."); return false; }
-                 const arrivalDate = parseTimeString(arrivalTime);
-                 const departureDate = parseTimeString(departureTime);
-                 if (!arrivalDate) { showToast("Formato de hora de llegada inválido (HH:MM)."); return false; }
-                 if (!departureDate) { showToast("Formato de hora de salida inválido (HH:MM)."); return false; }
-                 if (departureDate.getTime() < arrivalDate.getTime()) { // Compare timestamps for precision
-                     showToast("La hora de salida debe ser >= hora de llegada.");
-                     return false;
-                 }
-                 return true;
-            }
-
-            function addStop() {
-                 const arrivalTime = DOMElements.stopTimeInput.value; const departureTime = DOMElements.stopDepartureTimeInput.value;
-                 const lat = parseFloat(DOMElements.stopLatInput.value); const lng = parseFloat(DOMElements.stopLngInput.value);
-                 const name = DOMElements.stopNameInput.value.trim() || `Parada (${lat ? lat.toFixed(3) : '?'})` ;
-
-                 if (!validateStopInputData(name, arrivalTime, departureTime, lat, lng)) return;
-
-                 const stopId = Date.now(); const newStop = { id: stopId, name, time: arrivalTime, departureTime: departureTime, lat, lng };
-
-                 if (!Array.isArray(routes[currentRouteBeingBuiltIndex])) {
-                     routes[currentRouteBeingBuiltIndex] = [];
-                     console.warn(`Inicializado array para ruta ${currentRouteBeingBuiltIndex}`);
-                 }
-                 routes[currentRouteBeingBuiltIndex].push(newStop);
-                 routes[currentRouteBeingBuiltIndex].sort((a, b) => a.time.localeCompare(b.time)); // Ordenar siempre
-
-                 addStopMarker(newStop);
-                 clearAddEditStopForm();
-                 renderStopsList();
-                 updateUIBasedOnState();
-                 showToast(`Parada "${name}" añadida.`);
-                 console.log("Stop added:", newStop);
-            }
-
-            function updateStop() {
-                 const routeToEdit = routes[currentRouteBeingBuiltIndex];
-                 const stopIndex = routeToEdit.findIndex(s => s.id === editingStopId);
-                 if (stopIndex === -1) { console.error("Parada a editar no encontrada:", editingStopId); cancelEditMode(); return; }
-
-                 const arrivalTime = DOMElements.stopTimeInput.value; const departureTime = DOMElements.stopDepartureTimeInput.value;
-                 const lat = parseFloat(DOMElements.stopLatInput.value); const lng = parseFloat(DOMElements.stopLngInput.value);
-                 const updatedName = DOMElements.stopNameInput.value.trim() || `Parada (${lat ? lat.toFixed(3) : '?'})`;
-
-                 if (!validateStopInputData(updatedName, arrivalTime, departureTime, lat, lng)) return;
-
-                 const stopToUpdate = routeToEdit[stopIndex];
-                 stopToUpdate.name = updatedName; stopToUpdate.time = arrivalTime; stopToUpdate.departureTime = departureTime;
-                 stopToUpdate.lat = lat; stopToUpdate.lng = lng;
-
-                 updateStopMarker(stopToUpdate); // Update marker separately
-
-                 routeToEdit.sort((a, b) => a.time.localeCompare(b.time));
-                 cancelEditMode(); // Resets form and state
-                 renderStopsList();
-                 updateUIBasedOnState();
-                 showToast(`Parada "${updatedName}" actualizada.`);
-                 console.log("Parada actualizada:", editingStopId);
-            }
-
-            function handleStopListClick(event) {
-                if (currentRouteIndex !== -1 || editingStopId) return;
-                const listItem = event.target.closest('li[data-stop-id]'); // Target only list items with ID
-                const deleteButton = event.target.closest('.stop-actions button');
-
-                if (deleteButton && listItem) {
-                    event.stopPropagation(); // Prevent triggering edit when clicking delete
-                    const stopIdToDelete = parseInt(listItem.dataset.stopId, 10);
-                    const stopNameToDelete = listItem.querySelector('.stop-details')?.textContent || 'esta parada';
-                    if (confirm(`¿Eliminar "${stopNameToDelete}"?`)) {
-                        removeStop(stopIdToDelete);
-                    }
-                } else if (listItem) {
-                    const stopIdToEdit = parseInt(listItem.dataset.stopId, 10);
-                    enterEditMode(stopIdToEdit);
-                }
-            }
-
-            function removeStop(stopId) {
-                if (currentRouteIndex !== -1 || editingStopId) return;
-                const route = routes[currentRouteBeingBuiltIndex];
-                const stopIndex = route.findIndex(s => s.id === stopId);
-                if (stopIndex > -1) {
-                     const removedStop = route.splice(stopIndex, 1)[0];
-                     removeStopMarker(removedStop.id); // Remove marker from map and cache
-                     renderStopsList();
-                     updateUIBasedOnState();
-                     showToast(`Parada "${removedStop.name}" eliminada.`);
-                     console.log("Parada eliminada:", stopId);
-                } else { console.warn("Intento de eliminar parada no encontrada:", stopId); }
-            }
-
-            function enterEditMode(stopId) {
-                 const route = routes[currentRouteBeingBuiltIndex];
-                 const stopToEdit = route.find(s => s.id === stopId);
-                 if (!stopToEdit) { console.warn("Parada a editar no encontrada en ruta actual:", stopId); return; }
-
-                 editingStopId = stopId;
-                 DOMElements.editingStopIdInput.value = stopId; // Store ID (optional)
-                 DOMElements.stopNameInput.value = stopToEdit.name;
-                 DOMElements.stopTimeInput.value = stopToEdit.time;
-                 DOMElements.stopDepartureTimeInput.value = stopToEdit.departureTime;
-                 DOMElements.stopLatInput.value = stopToEdit.lat.toFixed(6);
-                 DOMElements.stopLngInput.value = stopToEdit.lng.toFixed(6);
-
-                 DOMElements.addEditStopBtn.textContent = "Actualizar Parada";
-                 DOMElements.addEditStopBtn.classList.add('update-mode');
-                 DOMElements.cancelEditBtn.style.display = 'block';
-                 DOMElements.body.classList.add('editing-stop');
-
-                 renderStopsList(); // Re-render to apply editing class
-                 if (map) map.setView([stopToEdit.lat, stopToEdit.lng], map.getZoom() || USER_LOC_ZOOM);
-                 console.log("Editando parada:", stopId);
-            }
-
-            function cancelEditMode() {
-                 editingStopId = null;
-                 DOMElements.editingStopIdInput.value = "";
-                 clearAddEditStopForm();
-                 DOMElements.addEditStopBtn.textContent = "Añadir Parada";
-                 DOMElements.addEditStopBtn.classList.remove('update-mode');
-                 DOMElements.cancelEditBtn.style.display = 'none';
-                 DOMElements.body.classList.remove('editing-stop');
-                 renderStopsList(); // Re-render to remove editing class
-                 console.log("Edición cancelada.");
-            }
-
-            function clearAddEditStopForm() {
-                DOMElements.stopNameInput.value = ''; DOMElements.stopTimeInput.value = ''; DOMElements.stopDepartureTimeInput.value = '';
-                DOMElements.stopLatInput.value = ''; DOMElements.stopLngInput.value = '';
-            }
-
-            // --- Route Management ---
-            function finishCurrentRoute() {
-                if (currentRouteIndex !== -1 || editingStopId) return;
-                const currentRoute = routes[currentRouteBeingBuiltIndex];
-                if (!currentRoute || currentRoute.length === 0) { showToast("Añade paradas antes de finalizar."); return; }
-                currentRouteBeingBuiltIndex++;
-                if (currentRouteBeingBuiltIndex >= routes.length) { routes.push([]); }
-                renderStopsList();
-                updateUIBasedOnState();
-                showToast(`Ruta ${currentRouteBeingBuiltIndex} finalizada. Lista para Ruta ${currentRouteBeingBuiltIndex + 1}.`);
-            }
-
-            // --- Map Interaction ---
-            function handleMapClick(e) {
-                if (!map) return; // Map not ready
-                const lat = e.latlng.lat.toFixed(6); const lng = e.latlng.lng.toFixed(6);
-                if (currentRouteIndex === -1) { // Only update form if not tracking
-                    DOMElements.stopLatInput.value = lat;
-                    DOMElements.stopLngInput.value = lng;
-                } else { showToast("No se puede cambiar ubicación durante seguimiento.", 2000); }
-                // Visual feedback (always show)
-                if (arrivalMarker && map.hasLayer(arrivalMarker)) map.removeLayer(arrivalMarker);
-                arrivalMarker = L.circleMarker(e.latlng, { radius: 6, color: '#ff4136', fillColor: '#ff4136', fillOpacity: 0.7, weight: 1 }).addTo(map);
-                setTimeout(() => { if (arrivalMarker && map.hasLayer(arrivalMarker)) map.removeLayer(arrivalMarker); arrivalMarker = null; }, 1000);
-            }
-
-             function addStopMarker(stop) {
-                 if (!map || !stop || stopMarkers[stop.id]) return; // Map not ready or marker exists
-                 const routeNum = routes.findIndex(r => r.some(s => s.id === stop.id)) + 1;
-                 const marker = L.marker([stop.lat, stop.lng], {
-                     // Consider adding custom icons later
-                 }).addTo(map)
-                   .bindPopup(`<b>${stop.name}</b><br>(Ruta ${routeNum})<br>Lleg: ${stop.time} / Sal: ${stop.departureTime}`);
-                 stopMarkers[stop.id] = marker;
-             }
-
-             function updateStopMarker(stop) {
-                if (!map || !stop || !stopMarkers[stop.id]) return;
-                const marker = stopMarkers[stop.id];
-                marker.setLatLng([stop.lat, stop.lng]);
-                const routeNum = routes.findIndex(r => r.some(s => s.id === stop.id)) + 1; // Recalculate route num potentially
-                marker.setPopupContent(`<b>${stop.name}</b><br>(Ruta ${routeNum})<br>Lleg: ${stop.time} / Sal: ${stop.departureTime}`);
-             }
-
-             function removeStopMarker(stopId) {
-                if (map && stopMarkers[stopId] && map.hasLayer(stopMarkers[stopId])) {
-                    map.removeLayer(stopMarkers[stopId]);
-                }
-                delete stopMarkers[stopId]; // Remove from cache regardless
-             }
-
-             function removeAllStopMarkers() {
-                 Object.keys(stopMarkers).forEach(removeStopMarker);
-             }
-
-            // --- UI Updates ---
-             function renderStopsList() {
-                 DOMElements.stopsList.innerHTML = ''; // Clear previous items
-                 let routeToDisplay = null;
-
-                 if (currentRouteIndex !== -1) { // Tracking mode
-                     routeToDisplay = routes[currentRouteIndex];
-                 } else { // Editing mode
-                     routeToDisplay = routes[currentRouteBeingBuiltIndex];
-                 }
-
-                 if (!routeToDisplay || routeToDisplay.length === 0) {
-                     DOMElements.stopsList.innerHTML = '<li>No hay paradas en esta ruta.</li>';
-                     return;
-                 }
-
-                 // Ensure route is sorted (important after potential edits)
-                 routeToDisplay.sort((a, b) => a.time.localeCompare(b.time));
-
-                 const fragment = document.createDocumentFragment();
-                 routeToDisplay.forEach((stop, index) => {
-                     const li = document.createElement('li');
-                     li.dataset.stopId = stop.id;
-
-                     const detailsDiv = document.createElement('div');
-                     detailsDiv.className = 'stop-details';
-                     detailsDiv.textContent = `${index + 1}. ${stop.name}`;
-
-                     const timesDiv = document.createElement('div');
-                     timesDiv.className = 'stop-times';
-                     timesDiv.textContent = `${stop.time} / ${stop.departureTime}`;
-
-                     li.appendChild(detailsDiv);
-                     li.appendChild(timesDiv);
-
-                     // Add delete button only when not tracking
-                     if (currentRouteIndex === -1) {
-                         const actionsDiv = document.createElement('div');
-                         actionsDiv.className = 'stop-actions';
-                         const deleteBtn = document.createElement('button');
-                         deleteBtn.innerHTML = '×'; // Multiplication sign as 'X'
-                         deleteBtn.setAttribute('aria-label', `Eliminar ${stop.name}`);
-                         actionsDiv.appendChild(deleteBtn);
-                         li.appendChild(actionsDiv);
-                     }
-
-                     // Highlight active stop during tracking or editing
-                     if (editingStopId === stop.id) {
-                         li.classList.add('editing');
-                     } else if (currentRouteIndex !== -1 && index === currentStopIndex) {
-                         li.classList.add('active-stop');
-                     }
-                     fragment.appendChild(li);
-                 });
-                 DOMElements.stopsList.appendChild(fragment);
-
-                 // Scroll to active stop if tracking
-                 const activeLi = DOMElements.stopsList.querySelector('.active-stop');
-                 if (activeLi) {
-                     activeLi.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                 }
-             }
-
-            function updateUIBasedOnState() {
-                const isTracking = currentRouteIndex !== -1;
-                const isEditing = editingStopId !== null;
-                const currentBuildRoute = routes[currentRouteBeingBuiltIndex];
-                const totalRoutesWithStops = routes.filter(r => r && r.length > 0).length;
-                const buildRouteNum = currentRouteBeingBuiltIndex + 1;
-
-                DOMElements.addEditStopTitle.textContent = isEditing ? `Editando Parada (Ruta ${buildRouteNum})` : `Añadir Parada (Ruta ${buildRouteNum})`;
-                DOMElements.routeListTitle.textContent = isTracking ? `Siguiendo Ruta ${currentRouteIndex + 1}` : `Editando Ruta ${buildRouteNum}`;
-                DOMElements.routeIndicator.textContent = `Rutas Creadas: ${totalRoutesWithStops}`;
-                DOMElements.body.className = isTracking ? 'tracking-active' : (isEditing ? 'editing-stop' : '');
-
-                // Form Inputs & Buttons
-                const formInputs = [DOMElements.stopNameInput, DOMElements.stopTimeInput, DOMElements.stopDepartureTimeInput];
-                formInputs.forEach(input => input.disabled = isTracking);
-                DOMElements.addEditStopBtn.disabled = isTracking;
-                DOMElements.cancelEditBtn.style.display = isEditing ? 'block' : 'none';
-
-                // Route Management Buttons
-                DOMElements.finishRouteBtn.disabled = isTracking || isEditing || !currentBuildRoute || currentBuildRoute.length === 0;
-                DOMElements.saveRoutesBtn.disabled = isTracking || isEditing;
-                DOMElements.loadRoutesBtn.disabled = isTracking || isEditing;
-                DOMElements.clearAllBtn.disabled = isTracking || isEditing;
-
-                // Tracking Controls
-                DOMElements.startTrackingBtn.disabled = isTracking || isEditing || totalRoutesWithStops === 0;
-                DOMElements.stopTrackingBtn.disabled = !isTracking;
-
-                // Manual Navigation Controls
-                DOMElements.manualModeCheckbox.disabled = !isTracking;
-                DOMElements.prevBtn.disabled = !isTracking || !isManualMode;
-                DOMElements.nextBtn.disabled = !isTracking || !isManualMode;
-                if (isTracking && isManualMode) {
-                    DOMElements.prevBtn.disabled = (currentRouteIndex === 0 && currentStopIndex === 0);
-                    let lastValidRouteIdx = routes.length - 1;
-                    while (lastValidRouteIdx >= 0 && (!routes[lastValidRouteIdx] || routes[lastValidRouteIdx].length === 0)) lastValidRouteIdx--;
-                    DOMElements.nextBtn.disabled = (lastValidRouteIdx < 0) || (currentRouteIndex === lastValidRouteIdx && currentStopIndex >= routes[lastValidRouteIdx].length);
-                }
-            }
-
-            // --- Manual Mode Logic ---
-            function toggleManualMode() { isManualMode = DOMElements.manualModeCheckbox.checked; console.log("Modo Manual:", isManualMode); updateUIBasedOnState(); }
-            function goToPreviousStopOrRoute() { /* ... sin cambios ... */ if (!isManualMode || currentRouteIndex === -1) return; console.log("Nav Manual: Anterior"); let targetRouteIndex = currentRouteIndex; let targetStopIndex = currentStopIndex - 1; if (targetStopIndex < 0) { targetRouteIndex--; while (targetRouteIndex >= 0 && (!routes[targetRouteIndex] || routes[targetRouteIndex].length === 0)) { targetRouteIndex--; } if (targetRouteIndex < 0) { console.log("Ya en la primera parada."); showToast("Ya estás en la primera parada."); return; } targetStopIndex = routes[targetRouteIndex].length - 1; console.log(`Cambiando a Ruta ${targetRouteIndex + 1}, Última parada`); } else { console.log(`Retrocediendo a Parada ${targetStopIndex + 1}`); } currentRouteIndex = targetRouteIndex; currentStopIndex = targetStopIndex; resetMarkerStyles(); renderStopsList(); updateUIBasedOnState(); updateStatusForCurrentTarget(); }
-            function goToNextStopOrRoute() { if (!isManualMode || currentRouteIndex === -1) return; console.log("Nav Manual: Siguiente"); advanceStopOrRoute(); }
-            function updateStatusForCurrentTarget() { /* ... sin cambios ... */ if (currentRouteIndex === -1 || currentStopIndex === -1) return; const currentRoute = routes[currentRouteIndex]; if (!currentRoute || currentStopIndex >= currentRoute.length) return; const targetStop = currentRoute[currentStopIndex]; let infoText = `(Manual) Hacia ${targetStop.name}`; updateStatusDisplayContent("idle", infoText, "--:--"); }
-
-            // --- Tracking Logic ---
-            function startRouteTracking() {
-                const validRoutes = routes.filter(r => r && r.length > 0);
-                if (validRoutes.length === 0) { showToast("Crea o carga al menos una ruta con paradas."); return; }
-                if (watchId) { console.warn("Tracking ya está activo."); return; }
-                if (editingStopId) cancelEditMode();
-
-                // Final validation before starting
-                for (const route of validRoutes) {
-                    for (const stop of route) {
-                        if (!validateStopStructure(stop)) {
-                             showToast(`Error: Datos inválidos en parada "${stop.name}". No se puede iniciar.`, 5000);
-                             return;
-                        }
-                    }
-                }
-
-                currentRouteIndex = routes.findIndex(r => r && r.length > 0);
-                if (currentRouteIndex === -1) { showToast("Error: No se encontraron rutas válidas."); return; }
-                currentStopIndex = 0;
-                isManualMode = DOMElements.manualModeCheckbox.checked;
-                resetMarkerStyles();
-                currentStatusInfo = { phase: 'approaching_first', text: `Hacia ${routes[currentRouteIndex][0].name}` };
-                console.log(`Iniciando seguimiento. Ruta ${currentRouteIndex + 1}, Hacia parada ${currentStopIndex + 1}. Modo Manual: ${isManualMode}`);
-                renderStopsList(); updateUIBasedOnState(); updateStatusDisplayContent("idle", "Iniciando GPS...", "--:--");
-
-                if (navigator.geolocation) {
-                     const options = { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 };
-                     watchId = navigator.geolocation.watchPosition(handleLocationUpdate, handleLocationError, options);
-                     updateGPSStatus("Activado, buscando señal...");
-                } else { showToast("Geolocalización no soportada."); stopTracking("error_gps"); }
-            }
-
-            function stopTracking(reason = "detenido") {
-                 if (!watchId) return; // Already stopped
-                 navigator.geolocation.clearWatch(watchId); watchId = null;
-                 const wasTracking = currentRouteIndex !== -1;
-                 currentRouteIndex = -1; currentStopIndex = -1; lastKnownPosition = null; isManualMode = false; DOMElements.manualModeCheckbox.checked = false;
-                 currentStatusInfo = { phase: 'idle', text: `Seguimiento ${reason}` };
-                 if (currentLocationMarker && map.hasLayer(currentLocationMarker)) { map.removeLayer(currentLocationMarker); currentLocationMarker = null; }
-                 resetMarkerStyles();
-                 let finalText = `Seguimiento ${reason}.`; if (reason === "completed") finalText = "¡Ruta(s) completada(s)!"; else if (reason === "error_gps") finalText = "Error: GPS no disponible."; else if (reason === "error_data") finalText = "Error en datos de ruta.";
-                 updateStatusDisplayContent("idle", finalText, "--:--"); updateGPSStatus("GPS desactivado."); if (wasTracking) renderStopsList();
-                 updateUIBasedOnState(); console.log("Seguimiento detenido:", reason);
-            }
-
-             function handleLocationUpdate(position) {
-                 if (currentRouteIndex === -1) return; // Check if tracking stopped unexpectedly
-                 lastKnownPosition = position; const now = new Date(); const { latitude, longitude, accuracy } = position.coords; updateGPSStatus(`Activo | Precisión: ${accuracy.toFixed(0)}m`);
-                 const userLatLng = [latitude, longitude]; if (!currentLocationMarker) { currentLocationMarker = L.circleMarker(userLatLng, { radius: 7, fillColor: "#0d6efd", color: "#ffffff", weight: 2, opacity: 1, fillOpacity: 0.9 }).addTo(map).bindPopup("Ubicación actual"); } else { currentLocationMarker.setLatLng(userLatLng); }
-
-                 // Safely access current route and stops
-                 const currentRoute = routes[currentRouteIndex];
-                 if (!currentRoute || currentStopIndex < 0 || currentStopIndex >= currentRoute.length) { console.warn("handleLocationUpdate: Estado de ruta/parada inválido."); stopTracking("estado inválido"); return; }
-                 const nextStop = currentRoute[currentStopIndex]; const previousStop = (currentStopIndex > 0) ? currentRoute[currentStopIndex - 1] : null;
-
-                 let timeDifferenceMs = 0; let statusText = ""; let calculationPhase = "idle";
-                 const distanceToNextStopM = calculateDistance(latitude, longitude, nextStop.lat, nextStop.lng) * 1000;
-                 let distanceToPreviousStopM = Infinity; if (previousStop) { distanceToPreviousStopM = calculateDistance(latitude, longitude, previousStop.lat, previousStop.lng) * 1000; }
-
-                 // --- Calculation Logic (as before) ---
-                if (previousStop && distanceToPreviousStopM < ARRIVAL_THRESHOLD_METERS) { calculationPhase = 'at_stop'; statusText = `En ${previousStop.name}, Sal: ${previousStop.departureTime}`; const schedDep = parseTimeString(previousStop.departureTime); if (schedDep) { timeDifferenceMs = now.getTime() - schedDep.getTime(); } else { console.error(`Error parseando hora salida '${previousStop.departureTime}' en 'at_stop'`); timeDifferenceMs = 0; } }
-                else if (!previousStop) { calculationPhase = 'approaching_first'; statusText = `Hacia ${nextStop.name}`; const schedArr = parseTimeString(nextStop.time); if (schedArr) { timeDifferenceMs = now.getTime() - schedArr.getTime(); } else { console.error(`Error parseando hora llegada '${nextStop.time}' en 'approaching_first'`); timeDifferenceMs = 0; }}
-                else { calculationPhase = 'en_route'; statusText = `Hacia ${nextStop.name}`; const schedDepPrev = parseTimeString(previousStop.departureTime); const schedArrNext = parseTimeString(nextStop.time); if (schedDepPrev && schedArrNext && schedArrNext >= schedDepPrev) { const schedSegDur = schedArrNext.getTime() - schedDepPrev.getTime(); const totSegDist = calculateDistance(previousStop.lat, previousStop.lng, nextStop.lat, nextStop.lng); let distTrav = calculateDistance(previousStop.lat, previousStop.lng, latitude, longitude); let ratio = 0; if (totSegDist > 0.001) { distTrav = Math.max(0, Math.min(distTrav, totSegDist)); ratio = distTrav / totSegDist; } else if (distTrav > 0) { ratio = 1; } const schedTElapsed = ratio * schedSegDur; const actTElapsed = now.getTime() - schedDepPrev.getTime(); timeDifferenceMs = actTElapsed - schedTElapsed; } else { console.error(`Error en tiempos/distancia para cálculo 'en_route' entre ${previousStop?.name || 'Inicio'} y ${nextStop.name}`); timeDifferenceMs = 0; } }
-                currentStatusInfo = { phase: calculationPhase, text: statusText }; updateStatusDisplayWithDifference(timeDifferenceMs, currentStatusInfo);
-
-                 // Auto-advance logic
-                 if (!isManualMode && distanceToNextStopM < ARRIVAL_THRESHOLD_METERS) {
-                     console.log(`(Auto) Llegada detectada a ${nextStop.name}. Avanzando...`);
-                     advanceStopOrRoute();
-                 }
-             }
-
-            function handleLocationError(error) {
-                 console.warn("Error GPS durante seguimiento:", error);
-                 let message = "Error GPS: "; let shouldStop = false;
-                 switch(error.code) {
-                     case error.PERMISSION_DENIED: message += "Permiso denegado."; shouldStop = true; break;
-                     case error.POSITION_UNAVAILABLE: message += "Señal no disponible."; break; // Keep trying?
-                     case error.TIMEOUT: message += "Timeout."; break; // Keep trying?
-                     default: message += "Desconocido."; break;
-                 }
-                 updateGPSStatus(message);
-                 showToast(message, 4000);
-                 if (shouldStop) { stopTracking("error_gps"); }
-            }
-
-
-            // --- Advance Logic ---
-            function advanceStopOrRoute() {
-                 if (currentRouteIndex === -1) return; const currentRoute = routes[currentRouteIndex]; if (!currentRoute || currentStopIndex >= currentRoute.length) { console.error("advanceStopOrRoute: Estado inválido."); return; }
-                 const arrivedStop = currentRoute[currentStopIndex];
-                 // Update marker style immediately
-                 if (stopMarkers[arrivedStop.id] && map.hasLayer(stopMarkers[arrivedStop.id])) { stopMarkers[arrivedStop.id].setOpacity(0.6); }
-                 // Show visual arrival feedback
-                 if (arrivalMarker && map.hasLayer(arrivalMarker)) map.removeLayer(arrivalMarker); arrivalMarker = L.circleMarker([arrivedStop.lat, arrivedStop.lng], { radius: 10, color: '#198754', fillColor: '#198754', fillOpacity: 0.4, weight: 1 }).addTo(map); setTimeout(() => { if (arrivalMarker && map.hasLayer(arrivalMarker)) map.removeLayer(arrivalMarker); arrivalMarker = null; }, 2000);
-
-                 currentStopIndex++; // Move to the next target index
-
-                 if (currentStopIndex >= currentRoute.length) { // Reached end of current route?
-                     console.log(`Fin de Ruta ${currentRouteIndex + 1}. Buscando siguiente...`);
-                     advanceRoute();
-                 } else { // Still stops left in this route
-                     const nextUpcomingStop = currentRoute[currentStopIndex];
-                     console.log(`Avanzando. Próxima parada: ${currentStopIndex + 1} (${nextUpcomingStop.name})`);
-                     currentStatusInfo = { phase: 'at_stop', text: `En ${arrivedStop.name}, Salida: ${arrivedStop.departureTime}` }; // Now waiting at the arrived stop
-                     updateStatusDisplayContent('idle', currentStatusInfo.text + "<br>Calculando...", "--:--");
-                     renderStopsList(); // Update highlighting
-                     updateUIBasedOnState(); // Update manual nav buttons state
-                 }
-            }
-
-            function advanceRoute() {
-                  let nextValidRouteIndex = currentRouteIndex + 1;
-                  while (nextValidRouteIndex < routes.length && (!routes[nextValidRouteIndex] || routes[nextValidRouteIndex].length === 0)) { nextValidRouteIndex++; }
-
-                  if (nextValidRouteIndex >= routes.length) { // No more valid routes
-                      console.log("¡Todas las rutas completadas!");
-                      stopTracking("completed");
-                  } else { // Found next valid route
-                      currentRouteIndex = nextValidRouteIndex;
-                      currentStopIndex = 0;
-                      const firstStopNextRoute = routes[currentRouteIndex][currentStopIndex];
-                      console.log(`Cambiando a Ruta ${currentRouteIndex + 1}. Próxima: ${firstStopNextRoute.name}`);
-                      currentStatusInfo = { phase: 'approaching_first', text: `Iniciando Ruta ${currentRouteIndex + 1}: Hacia ${firstStopNextRoute.name}` };
-                      updateStatusDisplayContent('idle', currentStatusInfo.text + "<br>Calculando...", "--:--");
-                      resetMarkerStyles(); // Reset opacity for new route
-                      renderStopsList(); updateUIBasedOnState();
-                  }
-             }
-
-            function resetMarkerStyles() {
-                 Object.values(stopMarkers).forEach(marker => {
-                      if (map && map.hasLayer(marker)) { marker.setOpacity(1.0); }
-                 });
-            }
-
-            // --- Display & Utility Functions ---
-            function updateStatusDisplayWithDifference(differenceMs, statusInfo) {
-                const totalSecondsRaw = differenceMs / 1000; const absoluteTotalSeconds = Math.abs(totalSecondsRaw);
-                const minutes = Math.floor(absoluteTotalSeconds / 60); const seconds = Math.floor(absoluteTotalSeconds % 60);
-                const formattedMagnitude = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-                let timeString; let statusClass;
-                if (differenceMs >= 0) { timeString = `-${formattedMagnitude}`; statusClass = (differenceMs <= ON_TIME_THRESHOLD_SECONDS * 1000) ? "on-time" : "late"; }
-                else { timeString = `+${formattedMagnitude}`; statusClass = (Math.abs(differenceMs) <= ON_TIME_THRESHOLD_SECONDS * 1000) ? "on-time" : "early"; }
-                if (differenceMs === 0 && minutes === 0 && seconds === 0) { timeString = "-00:00"; statusClass = "on-time"; } // Handle exact zero explicitly
-                updateStatusDisplayContent(statusClass, statusInfo.text, timeString);
-            }
-
-            function updateStatusDisplayContent(className, infoText, timeText) {
-                if (!DOMElements.statusDisplay) return;
-                DOMElements.statusDisplay.className = `status-display ${className}`;
-                if (DOMElements.statusInfoSpan) DOMElements.statusInfoSpan.innerHTML = infoText; // Allow HTML like <br>
-                if (DOMElements.statusTimeSpan) DOMElements.statusTimeSpan.textContent = timeText;
-            }
-
-            function updateGPSStatus(text) { if (DOMElements.gpsStatus) DOMElements.gpsStatus.textContent = `GPS: ${text}`; }
-            function calculateDistance(lat1, lon1, lat2, lon2) { if (lat1 == lat2 && lon1 == lon2) return 0; const dLat = deg2rad(lat2 - lat1); const dLon = deg2rad(lon2 - lon1); const a = Math.sin(dLat / 2) ** 2 + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon / 2) ** 2; const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return R * c; }
-            function deg2rad(deg) { return deg * (Math.PI / 180); }
-            function parseTimeString(timeString) { try { if (!timeString || typeof timeString !== 'string' || !timeString.includes(':')) return null; const [hours, minutes] = timeString.split(':').map(Number); if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null; const date = new Date(); date.setHours(hours, minutes, 0, 0); return date; } catch (e) { console.error("Error parsing time:", timeString, e); return null; } }
-
-            // --- Public API (if needed, though not strictly necessary in this single-file context) ---
-            // return { initializeApp }; // Expose only the entry point
-
-            // --- Auto-Initialize ---
-             document.addEventListener('DOMContentLoaded', initializeApp);
-
-        })(); // Immediately invoke the App function
-
-    </script>
-
-</body>
+<body>  <div id="map"></div>  <div class="controls">
+    <h2>Smart Move Pro</h2>
+    <label>Ruta:</label>
+    <select id="route-select"></select>
+    <div class="btn-group">
+      <button id="new-route-btn">Nueva Ruta</button>
+      <button id="save-route-btn">Guardar Ruta</button>
+      <button id="delete-route-btn">Borrar Ruta</button>
+    </div><label>Nombre de ruta nueva:</label>
+<input type="text" id="new-route-name" placeholder="Nombre...">
+
+<hr>
+<h3>Paradas</h3>
+<label>Latitud, Longitud:</label>
+<input type="text" id="stop-latlng" placeholder="-34.6037, -58.3816">
+<label>Hora llegada (HH:MM):</label>
+<input type="time" id="stop-arrival">
+<label>Hora salida (HH:MM):</label>
+<input type="time" id="stop-departure">
+<button id="add-stop-btn">Añadir Parada</button>
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Lat,Lng</th><th>Llegada</th><th>Salida</th><th>Acción</th></tr>
+  </thead>
+  <tbody id="stops-table"></tbody>
+</table>
+
+<div class="btn-group">
+  <button id="start-btn">Iniciar Seguimiento</button>
+  <button id="stop-btn" disabled>Detener Seguimiento</button>
+</div>
+<div class="btn-group">
+  <button id="prev-stop-btn" disabled>Anterior</button>
+  <button id="next-stop-btn" disabled>Siguiente</button>
+</div>
+<label><input type="checkbox" id="auto-advance" checked> Avance Automático</label>
+<div class="status" id="time-diff">+00:00</div>
+
+  </div>  <!-- Leaflet JS -->  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>  <script>
+    // -- Variables globales --
+    let map, markerCurrent;
+    let routes = {};           // { name: [ stops ] }
+    let routeOrder = [];
+    let currentRoute = null;
+    let currentStopIndex = 0;
+    let watcherId = null;
+    let updateInterval = null;
+    const avgSpeedMps = 10;    // m/s por defecto (ajustable)
+
+    // -- Inicialización de mapa --
+    function initMap() {
+      map = L.map('map').setView([-34.6037, -58.3816], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+      markerCurrent = L.marker([0,0]).addTo(map);
+    }
+
+    // -- Cargar rutas de localStorage --
+    function loadRoutes() {
+      const data = localStorage.getItem('sm_routes');
+      if(data) {
+        const parsed = JSON.parse(data);
+        routes = parsed.routes||{};
+        routeOrder = parsed.order||[];
+      }
+      refreshRouteSelect();
+    }
+    function saveRoutes() {
+      localStorage.setItem('sm_routes', JSON.stringify({ routes, order: routeOrder }));
+      refreshRouteSelect();
+    }
+    function refreshRouteSelect() {
+      const sel = document.getElementById('route-select');
+      sel.innerHTML = '';
+      routeOrder.forEach(name => {
+        const opt = document.createElement('option'); opt.value = name; opt.text = name;
+        sel.appendChild(opt);
+      });
+      sel.value = currentRoute;
+      sel.onchange();
+    }
+
+    // -- Creación, borrado y selección de rutas --
+    document.getElementById('new-route-btn').onclick = ()=>{
+      const name = document.getElementById('new-route-name').value.trim();
+      if(name && !routes[name]){
+        routes[name]=[]; routeOrder.push(name);
+        currentRoute=name; currentStopIndex=0; renderStops(); saveRoutes();
+      }
+    };
+    document.getElementById('delete-route-btn').onclick = ()=>{
+      if(currentRoute){ delete routes[currentRoute]; routeOrder = routeOrder.filter(n=>n!==currentRoute);
+        currentRoute = routeOrder[0]||null; currentStopIndex=0; renderStops(); saveRoutes(); }
+    };
+    document.getElementById('route-select').onchange = ()=>{
+      currentRoute = document.getElementById('route-select').value;
+      currentStopIndex = 0;
+      renderStops();
+    };
+
+    // -- Gestión de paradas --
+    document.getElementById('add-stop-btn').onclick = ()=>{
+      if(!currentRoute) return alert('Crear o seleccionar ruta primero');
+      const ll = document.getElementById('stop-latlng').value.split(',').map(s=>parseFloat(s));
+      const arr = document.getElementById('stop-arrival').value;
+      const dep = document.getElementById('stop-departure').value;
+      routes[currentRoute].push({ lat: ll[0], lng: ll[1], arrival: arr, departure: dep });
+      renderStops(); saveRoutes();
+    };
+    function renderStops(){
+      const tbody = document.getElementById('stops-table'); tbody.innerHTML='';
+      if(!currentRoute) return;
+      routes[currentRoute].forEach((stop,i)=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${i+1}</td><td>${stop.lat.toFixed(5)}, ${stop.lng.toFixed(5)}</td>
+          <td>${stop.arrival}</td><td>${stop.departure}</td>
+          <td><button data-i="${i}" class="del-stop">X</button></td>`;
+        tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll('.del-stop').forEach(btn=>{
+        btn.onclick = ()=>{
+          routes[currentRoute].splice(parseInt(btn.dataset.i),1);
+          renderStops(); saveRoutes();
+        };
+      });
+    }
+
+    // -- Tracking GPS y cálculo de diferencia --
+    function startTracking() {
+      if(!currentRoute||routes[currentRoute].length===0) return alert('Agregar paradas primero');
+      document.getElementById('start-btn').disabled=true;
+      document.getElementById('stop-btn').disabled=false;
+      document.getElementById('prev-stop-btn').disabled=false;
+      document.getElementById('next-stop-btn').disabled=false;
+      watcherId = navigator.geolocation.watchPosition(onLocation, console.error, { enableHighAccuracy: true });
+      updateInterval = setInterval(updateTimeDiff, 1000);
+    }
+    function stopTracking(){
+      navigator.geolocation.clearWatch(watcherId);
+      clearInterval(updateInterval);
+      document.getElementById('start-btn').disabled=false;
+      document.getElementById('stop-btn').disabled=true;
+    }
+    document.getElementById('start-btn').onclick = startTracking;
+    document.getElementById('stop-btn').onclick = stopTracking;
+    document.getElementById('next-stop-btn').onclick = ()=>{ currentStopIndex = Math.min(currentStopIndex+1, routes[currentRoute].length-1); };
+    document.getElementById('prev-stop-btn').onclick = ()=>{ currentStopIndex = Math.max(currentStopIndex-1,0); };
+
+    let currPos = null;
+    function onLocation(pos){
+      currPos = [pos.coords.latitude, pos.coords.longitude];
+      markerCurrent.setLatLng(currPos);
+      map.setView(currPos);
+    }
+    function updateTimeDiff(){
+      if(!currPos) return;
+      const stops = routes[currentRoute]; if(!stops || !stops.length) return;
+      if(currentStopIndex>=stops.length){ advanceRoute(); return; }
+      const stop = stops[currentStopIndex];
+      const dist = map.distance(currPos, [stop.lat, stop.lng]);
+      const now = new Date();
+      // Hora programada llegada parse
+      const [h,m] = stop.arrival.split(':').map(Number);
+      const scheduled = new Date(now);
+      scheduled.setHours(h, m, 0, 0);
+      // Estimado de viaje
+      const travelSec = dist / avgSpeedMps;
+      let diffSec = (scheduled - now)/1000 - travelSec;
+      const sign = diffSec>=0? '+': '-';
+      diffSec = Math.abs(Math.round(diffSec));
+      const mm = String(Math.floor(diffSec/60)).padStart(2,'0');
+      const ss = String(diffSec%60).padStart(2,'0');
+      document.getElementById('time-diff').textContent = `${sign}${mm}:${ss}`;
+      // Avance automático al llegar cerca y auto-advance
+      if(document.getElementById('auto-advance').checked && dist<15){ // 15m radio
+        currentStopIndex++;
+      }
+    }
+
+    // -- Avanzar a siguiente ruta --
+    function advanceRoute(){
+      const idx = routeOrder.indexOf(currentRoute);
+      if(idx < routeOrder.length-1){
+        currentRoute = routeOrder[idx+1];
+        currentStopIndex = 0;
+        renderStops();
+      } else {
+        // fin de todas
+        stopTracking();
+      }
+    }
+
+    // -- Eventos guardar y cargar rutas --
+    document.getElementById('save-route-btn').onclick = saveRoutes;
+
+    // -- Inicio --
+    window.onload = ()=>{
+      initMap(); loadRoutes();
+    };
+  </script></body>
 </html>
