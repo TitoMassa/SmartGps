@@ -1,157 +1,154 @@
-<!DOCTYPE html>
-<html lang="es">
+<!DOCTYPE html><html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">  
   <title>Smart Move Pro</title>
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
-      background-color: #000;
-      color: #FFF;
-    }
-    #map {
-      width: 100%;
-      height: 40vh;
-      z-index: 0;
-    }
-    .controls {
-      width: 95%;
-      max-width: 480px;
-      background-color: #000;
-      padding: 1rem;
-      border-radius: 1rem;
-      box-shadow: 0 2px 8px rgba(255, 255, 255, 0.1);
-      margin: -2rem auto 0;
-      position: relative;
-      z-index: 1000;
-    }
-    .controls h2, .controls h3 {
-      margin: 0 0 0.5rem;
-      font-size: 1.25rem;
-      color: #FFF;
-    }
-    .controls label {
-      display: block;
-      margin-top: 0.5rem;
-      font-size: 0.9rem;
-      color: #CCC;
-    }
-    .controls input,
-    .controls button,
-    .controls select {
-      width: 100%;
-      padding: 0.5rem;
-      margin-top: 0.25rem;
-      font-size: 1rem;
-      background-color: #000;
-      border: 1px solid #333;
-      border-radius: 0.25rem;
-      color: #FFF;
-    }
-    .controls button {
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .controls button:hover {
-      background-color: #222;
-    }
-    .controls table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 0.75rem;
-      background-color: #000;
-    }
-    .controls th,
-    .controls td {
-      border: 1px solid #111;
-      padding: 0.5rem;
-      font-size: 0.85rem;
-      text-align: center;
-      color: #FFF;
-    }
-    .current-stop {
-      background-color: #0055a5;
-      color: #FFF;
-    }
-    .legend {
-      text-align: center;
-      margin-top: 0.5rem;
-      font-size: 1rem;
-      font-weight: bold;
-      color: #FFF;
-    }
-    .controls .status {
-      font-size: 1.5rem;
-      text-align: center;
-      margin-top: 0.25rem;
-      color: #A5FF90;
-    }
-    .btn-group {
-      display: flex;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-    }
-    .btn-group button {
-      flex: 1;
-    }
-    hr {
-      border: none;
-      border-top: 1px solid #111;
-      margin: 1rem 0;
-    }
+    html, body { margin:0; padding:0; height:100%; background:black; color:white; font-family: sans-serif; }
+    #map { height: 50%; width: 100%; }
+    #controls { padding:10px; }
+    .btn { background: #333; color:white; border:none; padding:8px 12px; margin:4px; border-radius:4px; }
+    .btn:hover { background: #555; }
+    .route-list { max-height: 100px; overflow-y: auto; border:1px solid #444; margin:4px 0; }
+    .stop-time { font-size: 1.5em; margin-top:10px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="controls">
-    <h2>Smart Move Pro</h2>
-    <label>Ruta:</label>
-    <select id="route-select"></select>
-    <div class="btn-group">
-      <button id="new-route-btn">Nueva Ruta</button>
-      <button id="save-route-btn">Guardar Ruta</button>
-      <button id="delete-route-btn">Borrar Ruta</button>
+  <div id="controls">
+    <div>
+      <button id="new-route" class="btn">Nueva Ruta</button>
+      <select id="route-select" class="btn"></select>
+      <button id="save-route" class="btn">Guardar Ruta</button>
+      <button id="load-route" class="btn">Cargar Ruta</button>
     </div>
-    <label>Nombre de ruta nueva:</label>
-    <input type="text" id="new-route-name" placeholder="Nombre...">
-    <hr>
-    <h3>Paradas</h3>
-    <label>Latitud, Longitud:</label>
-    <input type="text" id="stop-latlng" placeholder="-34.6037, -58.3816">
-    <label>Hora llegada (HH:MM):</label>
-    <input type="time" id="stop-arrival">
-    <label>Hora salida (HH:MM):</label>
-    <input type="time" id="stop-departure">
-    <button id="add-stop-btn">Añadir Parada</button>
-    <table>
-      <thead>
-        <tr><th>#</th><th>Lat,Lng</th><th>Llegada</th><th>Salida</th><th>Acción</th></tr>
-      </thead>
-      <tbody id="stops-table"></tbody>
-    </table>
-    <div class="btn-group">
-      <button id="start-btn">Iniciar Seguimiento</button>
-      <button id="stop-btn" disabled>Detener Seguimiento</button>
+    <div>
+      <button id="start-tracking" class="btn">Iniciar Seguimiento</button>
+      <button id="stop-tracking" class="btn">Detener Seguimiento</button>
     </div>
-    <div class="btn-group">
-      <button id="prev-stop-btn" disabled>Anterior</button>
-      <button id="next-stop-btn" disabled>Siguiente</button>
+    <div>
+      <label><input type="checkbox" id="manual-switch"> Manual (prev/next)</label>
+      <button id="prev-stop" class="btn">Anterior</button>
+      <button id="next-stop" class="btn">Siguiente</button>
     </div>
-    <label><input type="checkbox" id="auto-advance" checked> Avance Automático</label>
-    <div class="legend" id="next-stop-legend">PRÓXIMA PARADA: -</div>
-    <div class="status" id="time-diff">+00:00</div>
-  </div>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script>
-    const map = L.map('map').setView([-34.6037, -58.3816], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
-  </script>
-</body>
+    <div class="stop-time" id="time-diff">+00:00</div>
+  </div>  <!-- Leaflet JS -->  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>  <script>
+    // Variables
+    let map = L.map('map').setView([-27.4806, -58.8349], 13); // Corrientes default
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '' }).addTo(map);
+    let routes = []; // Array of routes: each is array of stops
+    let currentRoute = null;
+    let currentStopIdx = 0;
+    let tracking = false;
+    let watchId = null;
+
+    // Icons
+    const stopIcon = L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [25,25] });
+    const driverIcon = L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [30,30], iconAnchor:[15,15] });
+
+    let driverMarker;
+    let lines = [];
+
+    // Add stop on map click
+    map.on('click', e => {
+      if (!currentRoute) return;
+      let time = prompt('Horario llegada (HH:MM)');
+      if (!time) return;
+      let [h,m] = time.split(':').map(Number);
+      let stop = { latlng: e.latlng, schedule: { h, m } };
+      // Add marker
+      stop.marker = L.marker(e.latlng, { icon: stopIcon }).addTo(map);
+      currentRoute.push(stop);
+      redrawRoute();
+    });
+
+    // Redraw polyline
+    function redrawRoute() {
+      lines.forEach(l=>map.removeLayer(l)); lines = [];
+      if (!currentRoute) return;
+      let latlngs = currentRoute.map(s=>s.latlng);
+      let line = L.polyline(latlngs, { color: 'white' }).addTo(map);
+      lines.push(line);
+    }
+
+    // UI handlers
+    document.getElementById('new-route').onclick = ()=>{
+      let name = prompt('Nombre de la ruta'); if(!name) return;
+      routes.push({ name, stops: [] });
+      currentRoute = routes[routes.length-1].stops;
+      updateRouteSelect();
+    };
+    function updateRouteSelect() {
+      let sel = document.getElementById('route-select'); sel.innerHTML='';
+      routes.forEach((r,i)=>{
+        let opt = document.createElement('option'); opt.value=i; opt.text=r.name; sel.add(opt);
+      });
+    }
+    document.getElementById('route-select').onchange = e=>{
+      clearMap(); currentRoute = routes[e.target.value].stops; currentStopIdx=0; redrawRoute();
+    };
+    document.getElementById('save-route').onclick = ()=>{
+      localStorage.setItem('routes', JSON.stringify(routes)); alert('Rutas guardadas');
+    };
+    document.getElementById('load-route').onclick = ()=>{
+      let data = localStorage.getItem('routes'); if(data){ routes=JSON.parse(data); updateRouteSelect(); alert('Rutas cargadas'); }
+    };
+
+    // Tracking
+    document.getElementById('start-tracking').onclick = ()=>{
+      if(tracking) return; tracking=true;
+      watchId = navigator.geolocation.watchPosition(onPosition, err=>console.error(err), { enableHighAccuracy:true });
+    };
+    document.getElementById('stop-tracking').onclick = ()=>{
+      if(watchId!==null) navigator.geolocation.clearWatch(watchId);
+      tracking=false; document.getElementById('time-diff').textContent='+00:00';
+    };
+
+    function onPosition(pos) {
+      let latlng = [pos.coords.latitude, pos.coords.longitude];
+      if(driverMarker) map.removeLayer(driverMarker);
+      driverMarker = L.marker(latlng, { icon: driverIcon }).addTo(map);
+      if(!currentRoute || currentRoute.length===0) return;
+      // automatic stop advance by proximity
+      if(!document.getElementById('manual-switch').checked) {
+        let nextStop = currentRoute[currentStopIdx];
+        let dist = map.distance(latlng, nextStop.latlng);
+        if(dist < 20 && currentStopIdx < currentRoute.length-1) {
+          currentStopIdx++;
+        }
+      }
+      updateTimeDiff(latlng);
+    }
+
+    // Manual next/prev
+    document.getElementById('prev-stop').onclick = ()=>{ if(currentStopIdx>0) currentStopIdx--; updateTimeDiff(driverMarker.getLatLng()); };
+    document.getElementById('next-stop').onclick = ()=>{ if(currentStopIdx<currentRoute.length-1) currentStopIdx++; updateTimeDiff(driverMarker.getLatLng()); };
+
+    // Compute time difference
+    function updateTimeDiff(latlng) {
+      let stop = currentRoute[currentStopIdx];
+      let now = new Date();
+      let sched = new Date(now);
+      sched.setHours(stop.schedule.h, stop.schedule.m, 0, 0);
+      // If schedule earlier than now and more than 12h difference, assume next day
+      if(sched - now < -12*3600*1000) sched.setDate(sched.getDate()+1);
+      let dist = map.distance(latlng, stop.latlng);
+      // Placeholder: treat 0 speed, ignore travel time
+      let diffMs = sched - now;
+      let sign = diffMs>=0? '+' : '-';
+      diffMs = Math.abs(diffMs);
+      let mm = String(Math.floor(diffMs/60000)).padStart(2,'0');
+      let ss = String(Math.floor((diffMs%60000)/1000)).padStart(2,'0');
+      document.getElementById('time-diff').textContent = `${sign}${mm}:${ss}`;
+    }
+
+    function clearMap() {
+      // remove markers and lines
+      map.eachLayer(layer=>{
+        if(layer instanceof L.Marker) map.removeLayer(layer);
+      }); lines.forEach(l=>map.removeLayer(l)); lines=[];
+    }
+  </script></body>
 </html>
