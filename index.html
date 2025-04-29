@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="es">
+<!DOCTYPE html><html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,16 +14,14 @@
     .controls input, .controls button, .controls select { width: 100%; padding: 0.5rem; margin-top: 0.25rem; font-size: 1rem; }
     .controls table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
     .controls th, .controls td { border: 1px solid #ddd; padding: 0.5rem; font-size: 0.85rem; text-align: center; }
-    .controls .status { font-size: 1.5rem; text-align: center; margin-top: 0.5rem; }
+    .current-stop { background-color: #007bff; color: #fff; }
+    .legend { text-align: center; margin-top: 0.5rem; font-size: 1rem; font-weight: bold; }
+    .controls .status { font-size: 1.5rem; text-align: center; margin-top: 0.25rem; }
     .btn-group { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
     .btn-group button { flex: 1; }
   </style>
 </head>
-<body>
-
-  <div id="map"></div>
-
-  <div class="controls">
+<body>  <div id="map"></div>  <div class="controls">
     <h2>Smart Move Pro</h2>
     <label>Ruta:</label>
     <select id="route-select"></select>
@@ -59,12 +56,9 @@
       <button id="next-stop-btn" disabled>Siguiente</button>
     </div>
     <label><input type="checkbox" id="auto-advance" checked> Avance Automático</label>
+    <div class="legend" id="next-stop-legend">PRÓXIMA PARADA: -</div>
     <div class="status" id="time-diff">+00:00</div>
-  </div>
-
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script>
+  </div>  <!-- Leaflet JS -->  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>  <script>
     let map, markerCurrent, stopMarkers = [], routeLine;
     let routes = {}, routeOrder = [], currentRoute = null, currentStopIndex = 0;
     let watcherId = null, updateInterval = null;
@@ -73,7 +67,6 @@
     function initMap() {
       map = L.map('map').setView([-34.6037, -58.3816], 13);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
-      // Marker de posición actual como círculo distinto
       markerCurrent = L.circleMarker([0,0], { radius: 8, color: 'blue', fillColor: 'blue', fillOpacity: 0.7 }).addTo(map);
       map.on('click', e => {
         if (!currentRoute) return alert('Seleccionar o crear ruta primero');
@@ -127,6 +120,7 @@
       if (!currentRoute) return;
       routes[currentRoute].forEach((stop, i) => {
         const tr = document.createElement('tr');
+        if (i === currentStopIndex) tr.classList.add('current-stop');
         tr.innerHTML = `<td>${i+1}</td><td>${stop.lat.toFixed(5)}, ${stop.lng.toFixed(5)}</td><td>${stop.arrival}</td><td>${stop.departure}</td><td><button data-i="${i}" class="del-stop">X</button></td>`;
         tbody.appendChild(tr);
       });
@@ -141,14 +135,13 @@
     function renderStopMarkers() {
       stopMarkers.forEach(m => map.removeLayer(m)); stopMarkers = [];
       if (!currentRoute) return;
-      routes[currentRoute].forEach(stop => { const m = L.marker([stop.lat, stop.lng]).addTo(map); stopMarkers.push(m); });
+      routes[currentRoute].forEach(stop => { stopMarkers.push(L.marker([stop.lat, stop.lng]).addTo(map)); });
     }
 
     function renderRouteLine() {
       if (routeLine) map.removeLayer(routeLine);
       if (!currentRoute) return;
-      const stops = routes[currentRoute];
-      if (stops.length < 2) return;
+      const stops = routes[currentRoute]; if (stops.length < 2) return;
       const latlngs = stops.map(s => [s.lat, s.lng]);
       routeLine = L.polyline(latlngs, { color: 'red', weight: 3 }).addTo(map);
     }
@@ -160,27 +153,28 @@
       watcherId = navigator.geolocation.watchPosition(onLocation, console.error, { enableHighAccuracy: true });
       updateInterval = setInterval(updateTimeDiff, 1000);
     }
-    function stopTracking() {
-      navigator.geolocation.clearWatch(watcherId); clearInterval(updateInterval);
-      document.getElementById('start-btn').disabled = false; document.getElementById('stop-btn').disabled = true;
-    }
+    function stopTracking() { navigator.geolocation.clearWatch(watcherId); clearInterval(updateInterval); document.getElementById('start-btn').disabled = false; document.getElementById('stop-btn').disabled = true; }
     document.getElementById('start-btn').onclick = startTracking;
     document.getElementById('stop-btn').onclick = stopTracking;
-    document.getElementById('next-stop-btn').onclick = () => { currentStopIndex = Math.min(currentStopIndex + 1, routes[currentRoute].length - 1); };
-    document.getElementById('prev-stop-btn').onclick = () => { currentStopIndex = Math.max(currentStopIndex - 1, 0); };
+    document.getElementById('next-stop-btn').onclick = () => { currentStopIndex = Math.min(currentStopIndex + 1, routes[currentRoute].length - 1); renderStops(); };
+    document.getElementById('prev-stop-btn').onclick = () => { currentStopIndex = Math.max(currentStopIndex - 1, 0); renderStops(); };
 
     let currPos = null;
-    function onLocation(pos) {
-      currPos = [pos.coords.latitude, pos.coords.longitude];
-      markerCurrent.setLatLng(currPos);
-      map.setView(currPos);
-    }
+    function onLocation(pos) { currPos = [pos.coords.latitude, pos.coords.longitude]; markerCurrent.setLatLng(currPos); map.setView(currPos); }
     function updateTimeDiff() {
-      if (!currPos) return;
+      if (!currPos || !currentRoute) return;
       const stops = routes[currentRoute]; if (!stops.length) return;
       if (currentStopIndex >= stops.length) { advanceRoute(); return; }
+      // Actualizar resaltado
+      renderStops();
+      // Leyenda próxima parada
+      const nextNum = currentStopIndex + 1;
+      const nextDep = stops[currentStopIndex].departure;
+      document.getElementById('next-stop-legend').textContent = `PRÓXIMA PARADA: ${nextNum} ${nextDep}`;
+      // Cálculo diferencia
       const stop = stops[currentStopIndex];
-      const dist = map.distance(currPos, [stop.lat, stop.lng]); const now = new Date();
+      const dist = map.distance(currPos, [stop.lat, stop.lng]);
+      const now = new Date();
       const [h,m] = stop.arrival.split(':').map(Number);
       const scheduled = new Date(now); scheduled.setHours(h, m, 0, 0);
       const travelSec = dist / avgSpeedMps;
@@ -194,13 +188,11 @@
     function advanceRoute() {
       const idx = routeOrder.indexOf(currentRoute);
       if (idx < routeOrder.length - 1) {
-        currentRoute = routeOrder[idx + 1]; currentStopIndex = 0;
-        renderStops(); renderStopMarkers(); renderRouteLine();
+        currentRoute = routeOrder[idx+1]; currentStopIndex = 0; renderStops(); renderStopMarkers(); renderRouteLine();
       } else stopTracking();
     }
 
     document.getElementById('save-route-btn').onclick = saveRoutes;
     window.onload = () => { initMap(); loadRoutes(); };
-  </script>
-</body>
+  </script></body>
 </html>
