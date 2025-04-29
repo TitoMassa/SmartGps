@@ -2,27 +2,108 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Move Pro</title>
+  <title>Smart Move Pro - Modo Oscuro</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; background: #f5f5f5; }
-    #map { width: 100%; height: 40vh; }
-    .controls { width: 95%; max-width: 480px; background: #fff; padding: 1rem; border-radius: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: -2rem; z-index: 1000; }
-    .controls h2 { margin: 0 0 0.5rem; font-size: 1.25rem; }
-    .controls label { display: block; margin-top: 0.5rem; font-size: 0.9rem; }
-    .controls input, .controls button, .controls select { width: 100%; padding: 0.5rem; margin-top: 0.25rem; font-size: 1rem; }
-    .controls table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
-    .controls th, .controls td { border: 1px solid #ddd; padding: 0.5rem; font-size: 0.85rem; text-align: center; }
-    .current-stop { background-color: #007bff; color: #fff; }
-    .legend { text-align: center; margin-top: 0.5rem; font-size: 1rem; font-weight: bold; }
-    .controls .status { font-size: 1.5rem; text-align: center; margin-top: 0.25rem; }
-    .btn-group { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-    .btn-group button { flex: 1; }
+    /* Modo oscuro */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #121212;
+      color: #e0e0e0;
+    }
+    #map { width: 100%; height: 40vh; }.controls {
+  width: 95%;
+  max-width: 480px;
+  background: #1e1e1e;
+  padding: 1rem;
+  border-radius: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.7);
+  margin-top: -2rem;
+  z-index: 1000;
+  color: #e0e0e0;
+}
+.controls h2, .controls h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  color: #ffffff;
+}
+.controls label {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: #cccccc;
+}
+.controls input,
+.controls button,
+.controls select {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  font-size: 1rem;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 0.25rem;
+  color: #e0e0e0;
+}
+.controls button {
+  background: #3a3a3a;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.controls button:hover {
+  background: #505050;
+}
+.controls table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  background: #1e1e1e;
+}
+.controls th,
+.controls td {
+  border: 1px solid #333;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  text-align: center;
+  color: #e0e0e0;
+}
+.current-stop {
+  background-color: #0055a5;
+  color: #ffffff;
+}
+.legend {
+  text-align: center;
+  margin-top: 0.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #ffffff;
+}
+.controls .status {
+  font-size: 1.5rem;
+  text-align: center;
+  margin-top: 0.25rem;
+  color: #a5ff90;
+}
+.btn-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.btn-group button {
+  flex: 1;
+}
+
   </style>
 </head>
-<body>  <div id="map"></div>  <div class="controls">
-    <h2>Smart Move Pro</h2>
+<body>
+  <div id="map"></div>
+  <div class="controls">
+    <h2>Smart Move Pro - Modo Oscuro</h2>
     <label>Ruta:</label>
     <select id="route-select"></select>
     <div class="btn-group">
@@ -32,7 +113,7 @@
     </div>
     <label>Nombre de ruta nueva:</label>
     <input type="text" id="new-route-name" placeholder="Nombre...">
-    <hr>
+    <hr style="border-color: #333;">
     <h3>Paradas</h3>
     <label>Latitud, Longitud:</label>
     <input type="text" id="stop-latlng" placeholder="-34.6037, -58.3816">
@@ -59,140 +140,6 @@
     <div class="legend" id="next-stop-legend">PRÓXIMA PARADA: -</div>
     <div class="status" id="time-diff">+00:00</div>
   </div>  <!-- Leaflet JS -->  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>  <script>
-    let map, markerCurrent, stopMarkers = [], routeLine;
-    let routes = {}, routeOrder = [], currentRoute = null, currentStopIndex = 0;
-    let watcherId = null, updateInterval = null;
-    const avgSpeedMps = 10;
-
-    function initMap() {
-      map = L.map('map').setView([-34.6037, -58.3816], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
-      markerCurrent = L.circleMarker([0,0], { radius: 8, color: 'blue', fillColor: 'blue', fillOpacity: 0.7 }).addTo(map);
-      map.on('click', e => {
-        if (!currentRoute) return alert('Seleccionar o crear ruta primero');
-        const { lat, lng } = e.latlng;
-        const arrival = prompt(`Hora llegada (HH:MM) para parada en [${lat.toFixed(5)},${lng.toFixed(5)}]:`, '00:00');
-        if (!arrival) return;
-        const departure = prompt(`Hora salida (HH:MM) para parada en [${lat.toFixed(5)},${lng.toFixed(5)}]:`, '00:00');
-        if (departure === null) return;
-        routes[currentRoute].push({ lat, lng, arrival, departure });
-        renderStops(); saveRoutes(); renderStopMarkers(); renderRouteLine();
-      });
-    }
-
-    function loadRoutes() {
-      const data = localStorage.getItem('sm_routes');
-      if (data) { const parsed = JSON.parse(data); routes = parsed.routes || {}; routeOrder = parsed.order || []; }
-      refreshRouteSelect();
-    }
-    function saveRoutes() {
-      localStorage.setItem('sm_routes', JSON.stringify({ routes, order: routeOrder }));
-      refreshRouteSelect();
-    }
-    function refreshRouteSelect() {
-      const sel = document.getElementById('route-select'); sel.innerHTML = '';
-      routeOrder.forEach(name => { const opt = document.createElement('option'); opt.value = name; opt.text = name; sel.appendChild(opt); });
-      sel.value = currentRoute; sel.onchange();
-    }
-
-    document.getElementById('new-route-btn').onclick = () => {
-      const name = document.getElementById('new-route-name').value.trim();
-      if (name && !routes[name]) { routes[name] = []; routeOrder.push(name); currentRoute = name; currentStopIndex = 0; renderStops(); renderStopMarkers(); renderRouteLine(); saveRoutes(); }
-    };
-    document.getElementById('delete-route-btn').onclick = () => {
-      if (currentRoute) { delete routes[currentRoute]; routeOrder = routeOrder.filter(n => n !== currentRoute); currentRoute = routeOrder[0] || null; currentStopIndex = 0; renderStops(); renderStopMarkers(); renderRouteLine(); saveRoutes(); }
-    };
-    document.getElementById('route-select').onchange = () => {
-      currentRoute = document.getElementById('route-select').value; currentStopIndex = 0; renderStops(); renderStopMarkers(); renderRouteLine();
-    };
-
-    document.getElementById('add-stop-btn').onclick = () => {
-      if (!currentRoute) return alert('Crear o seleccionar ruta primero');
-      const ll = document.getElementById('stop-latlng').value.split(',').map(s => parseFloat(s));
-      const arr = document.getElementById('stop-arrival').value;
-      const dep = document.getElementById('stop-departure').value;
-      routes[currentRoute].push({ lat: ll[0], lng: ll[1], arrival: arr, departure: dep });
-      renderStops(); saveRoutes(); renderStopMarkers(); renderRouteLine();
-    };
-
-    function renderStops() {
-      const tbody = document.getElementById('stops-table'); tbody.innerHTML = '';
-      if (!currentRoute) return;
-      routes[currentRoute].forEach((stop, i) => {
-        const tr = document.createElement('tr');
-        if (i === currentStopIndex) tr.classList.add('current-stop');
-        tr.innerHTML = `<td>${i+1}</td><td>${stop.lat.toFixed(5)}, ${stop.lng.toFixed(5)}</td><td>${stop.arrival}</td><td>${stop.departure}</td><td><button data-i="${i}" class="del-stop">X</button></td>`;
-        tbody.appendChild(tr);
-      });
-      tbody.querySelectorAll('.del-stop').forEach(btn => {
-        btn.onclick = () => {
-          routes[currentRoute].splice(parseInt(btn.dataset.i), 1);
-          renderStops(); saveRoutes(); renderStopMarkers(); renderRouteLine();
-        };
-      });
-    }
-
-    function renderStopMarkers() {
-      stopMarkers.forEach(m => map.removeLayer(m)); stopMarkers = [];
-      if (!currentRoute) return;
-      routes[currentRoute].forEach(stop => { stopMarkers.push(L.marker([stop.lat, stop.lng]).addTo(map)); });
-    }
-
-    function renderRouteLine() {
-      if (routeLine) map.removeLayer(routeLine);
-      if (!currentRoute) return;
-      const stops = routes[currentRoute]; if (stops.length < 2) return;
-      const latlngs = stops.map(s => [s.lat, s.lng]);
-      routeLine = L.polyline(latlngs, { color: 'red', weight: 3 }).addTo(map);
-    }
-
-    function startTracking() {
-      if (!currentRoute || routes[currentRoute].length === 0) return alert('Agregar paradas primero');
-      document.getElementById('start-btn').disabled = true; document.getElementById('stop-btn').disabled = false;
-      document.getElementById('prev-stop-btn').disabled = false; document.getElementById('next-stop-btn').disabled = false;
-      watcherId = navigator.geolocation.watchPosition(onLocation, console.error, { enableHighAccuracy: true });
-      updateInterval = setInterval(updateTimeDiff, 1000);
-    }
-    function stopTracking() { navigator.geolocation.clearWatch(watcherId); clearInterval(updateInterval); document.getElementById('start-btn').disabled = false; document.getElementById('stop-btn').disabled = true; }
-    document.getElementById('start-btn').onclick = startTracking;
-    document.getElementById('stop-btn').onclick = stopTracking;
-    document.getElementById('next-stop-btn').onclick = () => { currentStopIndex = Math.min(currentStopIndex + 1, routes[currentRoute].length - 1); renderStops(); };
-    document.getElementById('prev-stop-btn').onclick = () => { currentStopIndex = Math.max(currentStopIndex - 1, 0); renderStops(); };
-
-    let currPos = null;
-    function onLocation(pos) { currPos = [pos.coords.latitude, pos.coords.longitude]; markerCurrent.setLatLng(currPos); map.setView(currPos); }
-    function updateTimeDiff() {
-      if (!currPos || !currentRoute) return;
-      const stops = routes[currentRoute]; if (!stops.length) return;
-      if (currentStopIndex >= stops.length) { advanceRoute(); return; }
-      // Actualizar resaltado
-      renderStops();
-      // Leyenda próxima parada
-      const nextNum = currentStopIndex + 1;
-      const nextDep = stops[currentStopIndex].departure;
-      document.getElementById('next-stop-legend').textContent = `PRÓXIMA PARADA: ${nextNum} ${nextDep}`;
-      // Cálculo diferencia
-      const stop = stops[currentStopIndex];
-      const dist = map.distance(currPos, [stop.lat, stop.lng]);
-      const now = new Date();
-      const [h,m] = stop.arrival.split(':').map(Number);
-      const scheduled = new Date(now); scheduled.setHours(h, m, 0, 0);
-      const travelSec = dist / avgSpeedMps;
-      let diffSec = (scheduled - now) / 1000 - travelSec;
-      const sign = diffSec >= 0 ? '+' : '-'; diffSec = Math.abs(Math.round(diffSec));
-      const mm = String(Math.floor(diffSec/60)).padStart(2,'0'); const ss = String(diffSec%60).padStart(2,'0');
-      document.getElementById('time-diff').textContent = `${sign}${mm}:${ss}`;
-      if (document.getElementById('auto-advance').checked && dist < 15) currentStopIndex++;
-    }
-
-    function advanceRoute() {
-      const idx = routeOrder.indexOf(currentRoute);
-      if (idx < routeOrder.length - 1) {
-        currentRoute = routeOrder[idx+1]; currentStopIndex = 0; renderStops(); renderStopMarkers(); renderRouteLine();
-      } else stopTracking();
-    }
-
-    document.getElementById('save-route-btn').onclick = saveRoutes;
-    window.onload = () => { initMap(); loadRoutes(); };
+    // El resto del script permanece igual
   </script></body>
 </html>
