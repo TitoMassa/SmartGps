@@ -2,41 +2,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Move Pro - Modo Oscuro</title>
+  <title>Smart Move Pro</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    /* Modo oscuro */
+    /* AMOLED Black Theme */
     body {
       margin: 0;
       font-family: Arial, sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
-      background: #121212;
-      color: #e0e0e0;
+      background: #000000;
+      color: #FFFFFF;
     }
-    #map { width: 100%; height: 40vh; }.controls {
+    #map {
+      width: 100%;
+      height: 40vh;
+    }.controls {
   width: 95%;
   max-width: 480px;
-  background: #1e1e1e;
+  background: #000000;
   padding: 1rem;
   border-radius: 1rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
   margin-top: -2rem;
   z-index: 1000;
-  color: #e0e0e0;
 }
 .controls h2, .controls h3 {
   margin: 0 0 0.5rem;
   font-size: 1.25rem;
-  color: #ffffff;
+  color: #FFFFFF;
 }
 .controls label {
   display: block;
   margin-top: 0.5rem;
   font-size: 0.9rem;
-  color: #cccccc;
+  color: #CCCCCC;
 }
 .controls input,
 .controls button,
@@ -45,49 +47,48 @@
   padding: 0.5rem;
   margin-top: 0.25rem;
   font-size: 1rem;
-  background: #2a2a2a;
-  border: 1px solid #444;
+  background: #111111;
+  border: 1px solid #333333;
   border-radius: 0.25rem;
-  color: #e0e0e0;
+  color: #FFFFFF;
 }
 .controls button {
-  background: #3a3a3a;
   cursor: pointer;
   transition: background 0.2s;
 }
 .controls button:hover {
-  background: #505050;
+  background: #222222;
 }
 .controls table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 0.75rem;
-  background: #1e1e1e;
+  background: #000000;
 }
 .controls th,
 .controls td {
-  border: 1px solid #333;
+  border: 1px solid #111111;
   padding: 0.5rem;
   font-size: 0.85rem;
   text-align: center;
-  color: #e0e0e0;
+  color: #FFFFFF;
 }
 .current-stop {
   background-color: #0055a5;
-  color: #ffffff;
+  color: #FFFFFF;
 }
 .legend {
   text-align: center;
   margin-top: 0.5rem;
   font-size: 1rem;
   font-weight: bold;
-  color: #ffffff;
+  color: #FFFFFF;
 }
 .controls .status {
   font-size: 1.5rem;
   text-align: center;
   margin-top: 0.25rem;
-  color: #a5ff90;
+  color: #A5FF90;
 }
 .btn-group {
   display: flex;
@@ -97,13 +98,16 @@
 .btn-group button {
   flex: 1;
 }
+hr {
+  border-color: #111111;
+}
 
   </style>
 </head>
 <body>
   <div id="map"></div>
   <div class="controls">
-    <h2>Smart Move Pro - Modo Oscuro</h2>
+    <h2>Smart Move Pro</h2>
     <label>Ruta:</label>
     <select id="route-select"></select>
     <div class="btn-group">
@@ -113,7 +117,7 @@
     </div>
     <label>Nombre de ruta nueva:</label>
     <input type="text" id="new-route-name" placeholder="Nombre...">
-    <hr style="border-color: #333;">
+    <hr>
     <h3>Paradas</h3>
     <label>Latitud, Longitud:</label>
     <input type="text" id="stop-latlng" placeholder="-34.6037, -58.3816">
