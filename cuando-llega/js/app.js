@@ -2,10 +2,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const routeSelect = document.getElementById('route-select');
     const stopSelect = document.getElementById('stop-select');
     const arrivalTimeDisplay = document.getElementById('arrival-time-display');
-    const busStatusNote = document.getElementById('bus-status-note');
+    const busStatusNote = document.getElementById('bus-status-note'); // Lo mantenemos para debug o info interna
     const lastDataUpdateDisplay = document.getElementById('last-data-update');
 
-    let allRoutesDataFromStorage = []; // Estructura de edición del chofer
+    let allRoutesDataFromStorage = [];
     let passengerUpdateInterval;
     let currentDisplayedRouteName = null;
 
@@ -27,46 +27,44 @@ document.addEventListener('DOMContentLoaded', () => {
         allRoutesDataFromStorage = []; return false;
     }
 
-    function populateRouteSelect() {
+    function populateRouteSelect() { // Sin sufijos de estado
         if (!loadAllRoutesDefinitionsFromStorage()) {
-            arrivalTimeDisplay.textContent = "No hay rutas de chofer disponibles.";
+            arrivalTimeDisplay.textContent = "No hay rutas disponibles.";
             return;
         }
         const trackingStatus = getTrackingStatus();
-        const previousRouteValue = routeSelect.value; // Guardar selección actual
+        const previousRouteValue = routeSelect.value;
         routeSelect.innerHTML = '<option value="">-- Elige una ruta --</option>';
         let availableRouteNames = new Set();
 
+        // Añadir rutas de la cola primero (si existe y está online)
         if (trackingStatus && trackingStatus.isTracking && trackingStatus.trackingQueueNames) {
-            trackingStatus.trackingQueueNames.forEach((routeName, index) => {
+            trackingStatus.trackingQueueNames.forEach(routeName => {
                 if (!availableRouteNames.has(routeName)) {
                     const option = document.createElement('option');
                     option.value = routeName;
-                    let suffix = " (En Cola)";
-                    if (index === trackingStatus.currentRouteIndexInQueue) {
-                        suffix = " (En Curso)";
-                    }
-                    option.textContent = routeName + suffix;
+                    option.textContent = routeName; // Sin sufijo
                     routeSelect.appendChild(option);
                     availableRouteNames.add(routeName);
                 }
             });
         }
 
+        // Añadir el resto de las rutas definidas
         allRoutesDataFromStorage.forEach((routeDef) => {
             if (routeDef.name && routeDef.startPoint && routeDef.endPoint && !availableRouteNames.has(routeDef.name)) {
                 const option = document.createElement('option');
                 option.value = routeDef.name;
-                option.textContent = routeDef.name + " (Programada)";
+                option.textContent = routeDef.name; // Sin sufijo
                 routeSelect.appendChild(option);
                 availableRouteNames.add(routeDef.name);
             }
         });
-        
+
         if (previousRouteValue && availableRouteNames.has(previousRouteValue)) {
             routeSelect.value = previousRouteValue;
         } else {
-            routeSelect.value = ""; // Si la ruta previa ya no está o no había, deseleccionar
+            routeSelect.value = "";
         }
     }
 
@@ -74,15 +72,17 @@ document.addEventListener('DOMContentLoaded', () => {
         stopSelect.innerHTML = '<option value="">-- Elige una parada --</option>';
         stopSelect.disabled = true;
         currentDisplayedRouteName = selectedRouteName;
-        
+
         if (!selectedRouteName) return;
 
         const trackingStatus = getTrackingStatus();
         let stopsToDisplayForSelect = [];
+        let sourceIsTrackingData = false;
 
         // Priorizar datos de la ruta activa si es la seleccionada
         if (trackingStatus && trackingStatus.isTracking && trackingStatus.routeName === selectedRouteName && trackingStatus.routeStops) {
             stopsToDisplayForSelect = trackingStatus.routeStops;
+            sourceIsTrackingData = true;
         } else { // Para rutas en cola o modo offline, usar las definiciones de ruta
             const routeDefinition = allRoutesDataFromStorage.find(r => r.name === selectedRouteName);
             if (routeDefinition) {
@@ -106,16 +106,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 option.textContent = displayName;
                 stopSelect.appendChild(option);
+                // Guardar si la fuente fue tracking para referencia en el intervalo
+                stopSelect.dataset.source = sourceIsTrackingData ? 'tracking' : 'definition';
             });
             stopSelect.disabled = false;
+        } else {
+            console.warn(`CuandoLlega: No se encontraron paradas para la ruta ${selectedRouteName}`);
         }
     }
+
 
     routeSelect.addEventListener('change', () => {
         const selectedRouteName = routeSelect.value;
         const previousStopValue = stopSelect.value;
         populateStopSelect(selectedRouteName);
-        // Intentar restaurar selección de parada si la opción todavía existe
+        // Intentar restaurar parada
         if (previousStopValue && Array.from(stopSelect.options).some(opt => opt.value === previousStopValue)) {
             stopSelect.value = previousStopValue;
         } else {
@@ -129,18 +134,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function timeStringToDateTime(timeString, referenceDate = new Date()) {
-        if (!timeString || !timeString.includes(':')) return null;
-        const [hours, minutes] = timeString.split(':').map(Number);
-        const date = new Date(referenceDate);
-        date.setHours(hours, minutes, 0, 0);
-        return date;
+         if (!timeString || !timeString.includes(':')) return null;
+         const [hours, minutes] = timeString.split(':').map(Number);
+         const date = new Date(referenceDate); date.setHours(hours, minutes, 0, 0); return date;
     }
-    
+
     function getLegDurationMillis(fromStop, toStop) {
         const legDepartureDate = timeStringToDateTime(fromStop.departureTime);
         const legArrivalDate = timeStringToDateTime(toStop.arrivalTime);
         if (!legDepartureDate || !legArrivalDate) return null;
-
         let tempLegArrivalDate = new Date(legArrivalDate);
         if (tempLegArrivalDate.getTime() < legDepartureDate.getTime()) {
             tempLegArrivalDate.setDate(tempLegArrivalDate.getDate() + 1);
@@ -148,12 +150,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return tempLegArrivalDate.getTime() - legDepartureDate.getTime();
     }
 
-
-    function formatRemainingTime(milliseconds) { /* ... (sin cambios) ... */
-        if (milliseconds < 0) milliseconds = 0; const totalSeconds = Math.round(milliseconds / 1000);
+    function formatRemainingTime(milliseconds) {
+        if (milliseconds === Infinity || isNaN(milliseconds)) return "Calculando..."; // Caso para tiempos inválidos
+        if (milliseconds < 0) milliseconds = 0;
+        const totalSeconds = Math.round(milliseconds / 1000);
         const minutes = Math.floor(totalSeconds / 60);
+
         if (minutes === 0 && totalSeconds > 0 && totalSeconds < 60) return "ARRIBANDO";
-        if (minutes < 1 && totalSeconds <= 0) return "ARRIBANDO";
+        if (minutes < 1 && totalSeconds <= 0) return "ARRIBANDO"; // Considerar 0 como ARRIBANDO
         return `${minutes} min.`;
     }
 
@@ -161,90 +165,98 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedRouteNameByPassenger = routeSelect.value;
         const selectedStopOptionIndex = stopSelect.value;
 
+        // Limpiar estado inicial o si no hay selección
         if (selectedRouteNameByPassenger === "" || selectedStopOptionIndex === "") {
-            arrivalTimeDisplay.textContent = "Selecciona una ruta y parada.";
-            busStatusNote.textContent = "";
+            arrivalTimeDisplay.textContent = "Selecciona ruta y parada";
+            busStatusNote.textContent = ""; // Limpiar nota interna
+            lastDataUpdateDisplay.textContent = 'N/A';
             return;
         }
-        
+
         const passengerSelectedStopListIndex = parseInt(selectedStopOptionIndex);
         const trackingStatus = getTrackingStatus();
         const currentTimeMillis = new Date().getTime();
 
+        // Actualizar hora de última actualización de datos del chofer
         if (trackingStatus && trackingStatus.lastUpdateTime) {
             lastDataUpdateDisplay.textContent = new Date(trackingStatus.lastUpdateTime).toLocaleTimeString();
+             // Considerar datos viejos como offline
+            if (currentTimeMillis - trackingStatus.lastUpdateTime > 60000) { // Más de 1 minuto sin actualizar
+                busStatusNote.textContent = "Datos del chofer desactualizados. ";
+                // Forzar modo offline si los datos son muy viejos
+                 // trackingStatus = null; // Descomentar si se quiere forzar offline
+            }
         } else {
-            lastDataUpdateDisplay.textContent = 'Desconocida';
+            lastDataUpdateDisplay.textContent = 'N/A';
         }
-        
-        // Determinar si la ruta seleccionada es la activa, una en cola, o solo programada
-        let mode = "offline_or_other_route"; // Default
+
+        // Determinar modo
+        let mode = "offline_or_error";
         let indexOfSelectedRouteInQueue = -1;
 
-        if (trackingStatus && trackingStatus.isTracking) {
-            if (trackingStatus.routeName === selectedRouteNameByPassenger) {
-                mode = "active_route";
-            } else if (trackingStatus.trackingQueueNames && trackingStatus.trackingQueueNames.includes(selectedRouteNameByPassenger)) {
-                indexOfSelectedRouteInQueue = trackingStatus.trackingQueueNames.indexOf(selectedRouteNameByPassenger);
-                if (indexOfSelectedRouteInQueue > trackingStatus.currentRouteIndexInQueue) {
-                    mode = "queued_route";
+        if (trackingStatus && !trackingStatus.hasError) {
+            if (trackingStatus.isTracking) {
+                if (trackingStatus.routeName === selectedRouteNameByPassenger) {
+                    mode = "active_route";
+                } else if (trackingStatus.trackingQueueNames && trackingStatus.trackingQueueNames.includes(selectedRouteNameByPassenger)) {
+                    indexOfSelectedRouteInQueue = trackingStatus.trackingQueueNames.indexOf(selectedRouteNameByPassenger);
+                    if (indexOfSelectedRouteInQueue > trackingStatus.currentRouteIndexInQueue) {
+                        mode = "queued_route";
+                    } else {
+                        mode = "offline_or_error"; // Ruta en cola ya pasada o la activa (que ya se manejó)
+                    }
+                } else {
+                     mode = "offline_or_error"; // En línea pero en una ruta totalmente diferente
                 }
-                // Si es una ruta en cola ANTERIOR a la activa, se trata como "otra ruta" (ya pasó o error)
+            } else {
+                mode = "offline_or_error"; // Chofer envió estado "no tracking"
             }
+        } else if (trackingStatus && trackingStatus.hasError) {
+             mode = "offline_or_error"; // Chofer reportó un error
+             busStatusNote.textContent = `Error del chofer: ${trackingStatus.errorReason || 'Desconocido'}`;
         }
+        // Si trackingStatus es null, mode se queda como "offline_or_error"
 
-
-        // --- MODO OFFLINE / OTRA RUTA / ERROR DEL CHOFER ---
-        if (mode === "offline_or_other_route" || (trackingStatus && trackingStatus.hasError)) {
-            busStatusNote.textContent = "";
-            if (trackingStatus?.hasError) busStatusNote.textContent += `Error en datos del chofer: ${trackingStatus.errorReason || ''}. `;
-            
-            if (trackingStatus && trackingStatus.isTracking && trackingStatus.routeName !== selectedRouteNameByPassenger) {
-                 busStatusNote.textContent += `El chofer está en ruta "${trackingStatus.routeName}". `;
-            } else if (!trackingStatus || !trackingStatus.isTracking) {
-                busStatusNote.textContent += "El chofer está fuera de línea. ";
+        // --- MODO OFFLINE / ERROR ---
+        if (mode === "offline_or_error") {
+            arrivalTimeDisplay.textContent = "Sin Servicio"; // Mensaje consistente
+            // Añadir nota interna si se desea
+            if (!trackingStatus || !trackingStatus.isTracking) {
+                 busStatusNote.textContent += "Chofer fuera de línea o sin datos.";
+            } else if (trackingStatus.hasError){
+                 busStatusNote.textContent += " Error reportado por chofer.";
+            } else {
+                 busStatusNote.textContent += ` Chofer en ruta "${trackingStatus?.routeName}".`;
             }
-            busStatusNote.textContent += "Se muestra horario programado.";
-            
-            const routeDefinition = allRoutesDataFromStorage.find(r => r.name === selectedRouteNameByPassenger);
-            if (routeDefinition) {
-                let stopsForOffline = [];
-                if (routeDefinition.startPoint) stopsForOffline.push(routeDefinition.startPoint);
-                stopsForOffline = stopsForOffline.concat(routeDefinition.intermediateStops || []);
-                if (routeDefinition.endPoint) stopsForOffline.push(routeDefinition.endPoint);
-
-                const passengerSelectedStopData = stopsForOffline[passengerSelectedStopListIndex];
-                if (passengerSelectedStopData) {
-                    const timeToShow = (passengerSelectedStopData.type === 'start') ? 
-                                       passengerSelectedStopData.departureTime : 
-                                       passengerSelectedStopData.arrivalTime;
-                    arrivalTimeDisplay.textContent = `${timeToShow || '--:--'} (hor prog.)`;
-                } else { arrivalTimeDisplay.textContent = "Error datos parada (offline)"; }
-            } else { arrivalTimeDisplay.textContent = "Ruta no encontrada (offline)"; }
             return;
         }
 
+
         // --- MODO RUTA ACTIVA DEL CHOFER ---
         if (mode === "active_route") {
-            busStatusNote.textContent = "El chofer está en línea en esta ruta.";
+            busStatusNote.textContent = `Modo: Ruta activa (${selectedRouteNameByPassenger})`; // Nota interna
             if (!trackingStatus.routeStops || trackingStatus.routeStops.length === 0) {
-                arrivalTimeDisplay.textContent = "Error: Ruta activa sin paradas."; return;
+                arrivalTimeDisplay.textContent = "Error Ruta"; return;
             }
             const busRouteStops = trackingStatus.routeStops;
             const passengerSelectedStopDataOnline = busRouteStops[passengerSelectedStopListIndex];
-            if (!passengerSelectedStopDataOnline) { arrivalTimeDisplay.textContent = "Error: Parada no encontrada."; return; }
+            if (!passengerSelectedStopDataOnline) { arrivalTimeDisplay.textContent = "Error Parada"; return; }
 
             const busCurrentStopIndexFrom = trackingStatus.currentStopIndexFromWhichDeparted;
             let busDelayOrAheadMillis = trackingStatus.currentBusDelayOrAheadMillis;
             const choferEnPuntoDeInicioAunSinSalir = (busCurrentStopIndexFrom === -1);
 
-            if (choferEnPuntoDeInicioAunSinSalir && busDelayOrAheadMillis > 0) {
-                busDelayOrAheadMillis = 0;
-                busStatusNote.textContent = "El chofer está en el punto de inicio (a tiempo o esperando).";
+            // *** NUEVO CHEQUEO: BUS YA PASÓ ***
+            // Si el índice de la parada "desde la que salió" el bus es >= al índice de la parada seleccionada, ya pasó.
+            if (busCurrentStopIndexFrom >= passengerSelectedStopListIndex) {
+                 arrivalTimeDisplay.textContent = "Bus ya pasó";
+                 busStatusNote.textContent += " - Bus ya pasó esta parada.";
+                 return;
             }
 
-            if (passengerSelectedStopListIndex <= busCurrentStopIndexFrom) {
-                arrivalTimeDisplay.textContent = "Bus ya pasó"; return;
+
+            if (choferEnPuntoDeInicioAunSinSalir && busDelayOrAheadMillis > 0) {
+                busDelayOrAheadMillis = 0;
             }
 
             let estimatedTotalMillisToPassengerStop = 0;
@@ -253,33 +265,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (choferEnPuntoDeInicioAunSinSalir) {
                 const startPointDepartureTimeStr = busRouteStops[0].departureTime;
                 const scheduledDepartureFromStartPointDate = timeStringToDateTime(startPointDepartureTimeStr);
-                if (!scheduledDepartureFromStartPointDate) { arrivalTimeDisplay.textContent = "Error Horario Inicio"; return; }
+                if (!scheduledDepartureFromStartPointDate) { arrivalTimeDisplay.textContent = "Error Hor."; return; }
                 
                 let timeUntilTrueDeparture = Math.max(0, scheduledDepartureFromStartPointDate.getTime() - currentTimeMillis);
                 estimatedTotalMillisToPassengerStop = timeUntilTrueDeparture;
 
-                if (passengerSelectedStopListIndex > 0) { // Si no es la primera parada
+                if (passengerSelectedStopListIndex > 0) {
                     for (let i = 0; i < passengerSelectedStopListIndex; i++) {
                          const legDuration = getLegDurationMillis(busRouteStops[i], busRouteStops[i + 1]);
-                         if (legDuration === null) { console.warn("Horario inválido tramo (inicio)"); estimatedTotalMillisToPassengerStop += 180000; continue; } // Añadir 3 min
+                         if (legDuration === null) { estimatedTotalMillisToPassengerStop = Infinity; break; }
                          estimatedTotalMillisToPassengerStop += legDuration;
                     }
-                     // La 'timeUntilTrueDeparture' ya cuenta hasta la SALIDA de la parada 0.
-                    // Si el pasajero va a la parada 0, solo es 'timeUntilTrueDeparture'.
-                    // Si va a la parada 1, es 'timeUntilTrueDeparture' + duración(0->1).
-                    // El bucle anterior sumó todas las duraciones. Si el pasajero va a la parada 0, el bucle no corre.
-                    // Si el bucle corrió (pasajero va a parada > 0), la duración del primer tramo (0->1) ya está.
-                    // La variable 'estimatedTotalMillisToPassengerStop' ya tiene el tiempo hasta la *salida* de la parada 0.
-                    // El bucle suma las duraciones de los tramos *posteriores* a la salida de la parada 0.
-                    // Esto parece correcto.
                 }
-            } else { // Chofer ya en movimiento
+            } else { // Chofer en movimiento
                 const busNextStopIndexTo = trackingStatus.nextStopIndexTowardsWhichHeading;
                 if (busNextStopIndexTo >= busRouteStops.length || busNextStopIndexTo < 0) {
-                    arrivalTimeDisplay.textContent = "Error Datos Chofer"; return;
+                    arrivalTimeDisplay.textContent = "Error Datos"; return;
                 }
                 let arrivalTimeAtBusNextStopForCalc = timeStringToDateTime(busRouteStops[busNextStopIndexTo].arrivalTime);
-                if (!arrivalTimeAtBusNextStopForCalc) { arrivalTimeDisplay.textContent = "Error Horario"; return; }
+                if (!arrivalTimeAtBusNextStopForCalc) { arrivalTimeDisplay.textContent = "Error Hor."; return; }
                 
                 let tempDateForNextStop = new Date(scheduledTimeAtBusCurrentPosition);
                 const [arrH, arrM] = busRouteStops[busNextStopIndexTo].arrivalTime.split(':').map(Number);
@@ -296,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 for (let i = busNextStopIndexTo; i < passengerSelectedStopListIndex; i++) {
                     const legDuration = getLegDurationMillis(busRouteStops[i], busRouteStops[i + 1]);
-                    if (legDuration === null) { console.warn("Horario inválido tramo"); estimatedTotalMillisToPassengerStop += 180000; continue; }
+                    if (legDuration === null) { estimatedTotalMillisToPassengerStop = Infinity; break; }
                     estimatedTotalMillisToPassengerStop += legDuration;
                 }
             }
@@ -306,11 +310,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- MODO RUTA EN COLA ---
         if (mode === "queued_route") {
-            busStatusNote.textContent = `El bus está en ruta "${trackingStatus.routeName}". Esta ruta está en cola.`;
+            busStatusNote.textContent = `Modo: Ruta en cola (${selectedRouteNameByPassenger})`; // Nota interna
 
             // 1. Calcular tiempo restante para que el chofer termine SU RUTA ACTIVA
-            const activeRouteStops = trackingStatus.routeStops; // Paradas de la ruta activa del chofer
-            if (!activeRouteStops || activeRouteStops.length === 0) { arrivalTimeDisplay.textContent = "Error datos ruta activa"; return; }
+            const activeRouteStops = trackingStatus.routeStops;
+            if (!activeRouteStops || activeRouteStops.length === 0) { arrivalTimeDisplay.textContent = "Error Activa"; return; }
             
             let timeToFinishActiveRouteMillis = 0;
             const activeRouteLastStopIndex = activeRouteStops.length - 1;
@@ -319,49 +323,52 @@ document.addEventListener('DOMContentLoaded', () => {
             const choferEnInicioRutaActiva = (busCurrentStopFromIdxActive === -1);
 
             if (choferEnInicioRutaActiva && busDelayOrAheadActiveRoute > 0) {
-                busDelayOrAheadActiveRoute = 0; // No considerar adelanto para salida de ruta activa
+                busDelayOrAheadActiveRoute = 0;
             }
             const scheduledTimeAtBusCurrentPosActive = currentTimeMillis + busDelayOrAheadActiveRoute;
 
             if (choferEnInicioRutaActiva) {
                 const startPointDepartureActive = timeStringToDateTime(activeRouteStops[0].departureTime);
-                if (!startPointDepartureActive) { arrivalTimeDisplay.textContent = "Error Hor. Activa"; return; }
+                if (!startPointDepartureActive) { arrivalTimeDisplay.textContent = "Error H.Act"; return; }
                 timeToFinishActiveRouteMillis = Math.max(0, startPointDepartureActive.getTime() - currentTimeMillis);
-                for (let i = 0; i < activeRouteLastStopIndex; i++) { // Sumar todos los tramos de la ruta activa
+                for (let i = 0; i < activeRouteLastStopIndex; i++) {
                     const legDur = getLegDurationMillis(activeRouteStops[i], activeRouteStops[i+1]);
-                    if(legDur === null) { timeToFinishActiveRouteMillis += 180000; continue; } // Penalización
+                    if(legDur === null) { timeToFinishActiveRouteMillis = Infinity; break; }
                     timeToFinishActiveRouteMillis += legDur;
                 }
             } else { // Chofer en movimiento en ruta activa
                 const busNextStopToIdxActive = trackingStatus.nextStopIndexTowardsWhichHeading;
-                if (busNextStopToIdxActive >= activeRouteStops.length || busNextStopToIdxActive < 0) { arrivalTimeDisplay.textContent = "Error datos Activa"; return;}
+                 if (busNextStopToIdxActive > activeRouteLastStopIndex || busNextStopToIdxActive < 0) { arrivalTimeDisplay.textContent = "Error D.Act"; return;} // Mayor estricto, si es igual es la última parada
 
                 let arrivalAtNextInActive = timeStringToDateTime(activeRouteStops[busNextStopToIdxActive].arrivalTime);
-                if(!arrivalAtNextInActive) { arrivalTimeDisplay.textContent = "Error Hor. Activa"; return;}
-
+                 if(!arrivalAtNextInActive) { arrivalTimeDisplay.textContent = "Error H.Act"; return;}
+                
                 let tempDateForNextStopActive = new Date(scheduledTimeAtBusCurrentPosActive);
                 const [arrH, arrM] = activeRouteStops[busNextStopToIdxActive].arrivalTime.split(':').map(Number);
                 tempDateForNextStopActive.setHours(arrH, arrM, 0, 0);
-                if (tempDateForNextStopActive.getTime() < scheduledTimeAtBusCurrentPosActive && (scheduledTimeAtBusCurrentPosActive - tempDateForNextStopActive.getTime() > 12 * 3600000 )) {
+                if (tempDateForNextStopActive.getTime() < scheduledTimeAtBusCurrentPosActive && (scheduledTimeAtBusCurrentPosActive - tempDateForNextStopActive.getTime() > 12*3600000)) {
                     tempDateForNextStopActive.setDate(tempDateForNextStopActive.getDate() + 1);
                 }
-                arrivalAtNextInActive = tempDateForNextStopActive;
-                
+                 arrivalAtNextInActive = tempDateForNextStopActive;
+
                 let timePendingCurrentLegActive = arrivalAtNextInActive.getTime() - scheduledTimeAtBusCurrentPosActive;
                 if (timePendingCurrentLegActive < 0) timePendingCurrentLegActive = 0;
                 timeToFinishActiveRouteMillis = timePendingCurrentLegActive;
 
                 for (let i = busNextStopToIdxActive; i < activeRouteLastStopIndex; i++) {
                     const legDur = getLegDurationMillis(activeRouteStops[i], activeRouteStops[i+1]);
-                    if(legDur === null) { timeToFinishActiveRouteMillis += 180000; continue; }
+                    if(legDur === null) { timeToFinishActiveRouteMillis = Infinity; break; }
                     timeToFinishActiveRouteMillis += legDur;
                 }
             }
 
+            if (timeToFinishActiveRouteMillis === Infinity) { arrivalTimeDisplay.textContent = "Calculando..."; return; }
+
+
             // 2. Obtener la definición de la ruta en cola seleccionada por el pasajero
             const selectedQueuedRouteDefinition = allRoutesDataFromStorage.find(r => r.name === selectedRouteNameByPassenger);
             if (!selectedQueuedRouteDefinition || !selectedQueuedRouteDefinition.startPoint || !selectedQueuedRouteDefinition.endPoint) {
-                arrivalTimeDisplay.textContent = "Error datos ruta en cola"; return;
+                arrivalTimeDisplay.textContent = "Error R.Cola"; return;
             }
 
             // 3. Calcular tiempo desde el inicio de la ruta en cola hasta la parada del pasajero
@@ -371,30 +378,27 @@ document.addEventListener('DOMContentLoaded', () => {
             stopsOfQueuedRoute = stopsOfQueuedRoute.concat(selectedQueuedRouteDefinition.intermediateStops || []);
             if (selectedQueuedRouteDefinition.endPoint) stopsOfQueuedRoute.push(selectedQueuedRouteDefinition.endPoint);
             
-            // passengerSelectedStopListIndex es el índice en `stopsOfQueuedRoute`
-            const passengerTargetStopInQueued = stopsOfQueuedRoute[passengerSelectedStopListIndex];
-            if (!passengerTargetStopInQueued) { arrivalTimeDisplay.textContent = "Parada no existe en ruta en cola"; return;}
+            const passengerTargetStopInQueued = stopsOfQueuedRoute[passengerSelectedStopListIndex]; // El índice es correcto aquí
+            if (!passengerTargetStopInQueued) { arrivalTimeDisplay.textContent = "Error P.Cola"; return;}
 
             for (let i = 0; i < passengerSelectedStopListIndex; i++) {
                 const legDur = getLegDurationMillis(stopsOfQueuedRoute[i], stopsOfQueuedRoute[i+1]);
-                 if(legDur === null) { timeWithinQueuedRouteMillis += 180000; continue; }
+                 if(legDur === null) { timeWithinQueuedRouteMillis = Infinity; break; }
                 timeWithinQueuedRouteMillis += legDur;
             }
-            // Si la parada seleccionada es la primera de la ruta en cola (índice 0), timeWithinQueuedRouteMillis será 0.
+             if (timeWithinQueuedRouteMillis === Infinity) { arrivalTimeDisplay.textContent = "Calculando..."; return; }
 
             // 4. Considerar el "gap"
             const estimatedArrivalAtEndOfActiveRouteMillis = currentTimeMillis + timeToFinishActiveRouteMillis;
             const scheduledStartOfQueuedRouteDate = timeStringToDateTime(selectedQueuedRouteDefinition.startPoint.departureTime);
-            if(!scheduledStartOfQueuedRouteDate) { arrivalTimeDisplay.textContent = "Error Hor. Cola"; return; }
+            if(!scheduledStartOfQueuedRouteDate) { arrivalTimeDisplay.textContent = "Error H.Cola"; return; }
 
             let totalProjectedTimeMillis;
-            if (estimatedArrivalAtEndOfActiveRouteMillis < scheduledStartOfQueuedRouteDate.getTime()) {
-                // El bus llegará antes de que la ruta en cola deba empezar. Esperará.
-                // El tiempo total es (hora inicio prog. ruta cola - hora actual) + tiempo DENTRO de ruta cola
+            if (estimatedArrivalAtEndOfActiveRouteMillis <= scheduledStartOfQueuedRouteDate.getTime()) {
+                // Esperará. Tiempo = (Tiempo hasta inicio prog. cola) + (Tiempo dentro de cola)
                 totalProjectedTimeMillis = (scheduledStartOfQueuedRouteDate.getTime() - currentTimeMillis) + timeWithinQueuedRouteMillis;
             } else {
-                // El bus llegará tarde para el inicio programado de la ruta en cola.
-                // El tiempo total es (tiempo para terminar ruta activa) + tiempo DENTRO de ruta cola
+                // Empezará tarde. Tiempo = (Tiempo hasta fin ruta activa) + (Tiempo dentro de cola)
                 totalProjectedTimeMillis = timeToFinishActiveRouteMillis + timeWithinQueuedRouteMillis;
             }
             
@@ -403,44 +407,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- INICIALIZACIÓN Y ACTUALIZACIÓN PERIÓDICA ---
     populateRouteSelect();
     updateArrivalTime();
 
     if (passengerUpdateInterval) clearInterval(passengerUpdateInterval);
     passengerUpdateInterval = setInterval(() => {
-        populateRouteSelect(); // Repoblar rutas para actualizar sufijos (En Curso, En Cola)
-        // La selección de ruta se intenta mantener en populateRouteSelect
+        const previousRouteValue = routeSelect.value;
+        const previousStopValue = stopSelect.value;
         
+        populateRouteSelect(); // Actualizar lista de rutas (por si cambian estados)
+        
+        // Restaurar selección de ruta si aún existe
+        if (Array.from(routeSelect.options).some(opt => opt.value === previousRouteValue)) {
+            routeSelect.value = previousRouteValue;
+        } else {
+            routeSelect.value = ""; // Deseleccionar si ya no está
+        }
+
         const selectedRouteName = routeSelect.value;
-        if (selectedRouteName) {
-            const previousStopValue = stopSelect.value;
-            // Solo repoblar paradas si la ruta seleccionada cambió o si el estado de "fuente de datos" para esa ruta cambió
-            if (currentDisplayedRouteName !== selectedRouteName) {
-                populateStopSelect(selectedRouteName);
-            } else { // Misma ruta, verificar si cambió de online a offline o viceversa para esa ruta
-                const trackingStatus = getTrackingStatus();
-                const isNowOnlineForThisRoute = (trackingStatus && trackingStatus.isTracking && trackingStatus.routeName === selectedRouteName);
-                const wasStopSelectShowingOnlineData = stopSelect.dataset.source === 'tracking'; 
-                // (Necesitaríamos añadir data-source al stopSelect al poblarlo)
-                // Simplificación: repoblar si la ruta no cambió pero el estado general del tracking sí
-                if ( (stopSelect.dataset.isTrackingLastPopulate !== String(trackingStatus?.isTracking)) || 
-                     (stopSelect.dataset.activeRouteNameLastPopulate !== trackingStatus?.routeName) ) {
-                    populateStopSelect(selectedRouteName);
-                }
-            }
-             // Guardar el estado actual para la próxima comparación
-            stopSelect.dataset.isTrackingLastPopulate = String(getTrackingStatus()?.isTracking);
-            stopSelect.dataset.activeRouteNameLastPopulate = getTrackingStatus()?.routeName;
 
+        // Repoblar paradas si la ruta seleccionada cambió, o si el estado tracking cambió de fuente
+        const trackingStatus = getTrackingStatus();
+        const isNowOnlineForThisRoute = (trackingStatus && trackingStatus.isTracking && trackingStatus.routeName === selectedRouteName);
+        const dataSourceChanged = (stopSelect.dataset.source === 'tracking') !== isNowOnlineForThisRoute;
 
+        if (currentDisplayedRouteName !== selectedRouteName || dataSourceChanged) {
+            populateStopSelect(selectedRouteName);
+            // Intentar restaurar selección de parada si aún existe
             if (previousStopValue && Array.from(stopSelect.options).some(opt => opt.value === previousStopValue)) {
                 stopSelect.value = previousStopValue;
-            } else if(stopSelect.options.length > 1) { // Si hay opciones pero la previa no, no seleccionar nada
-                 stopSelect.value = "";
+            } else {
+                stopSelect.value = "";
             }
         } else {
-            populateStopSelect(""); // Limpiar paradas si no hay ruta seleccionada
+             // Si la ruta no cambió y la fuente de datos tampoco, no repoblar paradas,
+             // solo intentar mantener la selección.
+             if (previousStopValue && Array.from(stopSelect.options).some(opt => opt.value === previousStopValue)) {
+                stopSelect.value = previousStopValue;
+            } else {
+                 stopSelect.value = "";
+            }
         }
+
         updateArrivalTime();
     }, 7000); 
 });
