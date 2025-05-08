@@ -1,12 +1,14 @@
+// js/app.js (Para Smart Move Pro - App del Chofer)
+
 // Service Worker Registration
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js') // Ruta al archivo sw.js
+        navigator.serviceWorker.register('/sw.js') // Asumiendo que sw.js está en la raíz del sitio
             .then(registration => {
-                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                console.log('SmartMovePro: ServiceWorker registration successful with scope: ', registration.scope);
             })
             .catch(error => {
-                console.log('ServiceWorker registration failed: ', error);
+                console.log('SmartMovePro: ServiceWorker registration failed: ', error);
             });
     });
 }
@@ -23,9 +25,10 @@ let trackingQueue = [];
 
 let isTracking = false;
 let currentTrackingRouteIndex = -1;
-let currentTrackingStopIndex = -1;
+let currentTrackingStopIndex = -1; // Índice de la parada DESDE la que se partió
 let trackingInterval;
 let lastKnownPosition = null;
+let lastCalculatedDiffMillis = 0; // Para almacenar la última diferencia calculada
 
 const PROXIMITY_THRESHOLD_METERS = 50;
 
@@ -54,10 +57,12 @@ document.addEventListener('DOMContentLoaded', () => {
     bindEventListeners();
     updateTrackingButtonsState();
     updateManualControlsState();
+    // Inicializar el estado de seguimiento para pasajeros como "no rastreando"
+    updatePassengerTrackingStatus(false);
 });
 
 function initMap() {
-    map = L.map('map').setView([-34.6037, -58.3816], 13); // Buenos Aires como default
+    map = L.map('map').setView([-34.6037, -58.3816], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
@@ -91,14 +96,13 @@ function updateCurrentPosition(position) {
         currentPositionMarker.setLatLng([lat, lng]);
     }
 
-    if (isTracking && !trackingInterval) { // Si el intervalo se detuvo por alguna razón
+    if (isTracking && !trackingInterval) {
         calculateTimeDifference();
     }
 }
 
 function handleLocationError(error) {
-    console.warn(`ERROR(${error.code}): ${error.message}`);
-    // Podrías mostrar un mensaje al usuario aquí
+    console.warn(`SmartMovePro: ERROR(${error.code}): ${error.message}`);
 }
 
 // --- LÓGICA DE RUTAS Y PARADAS ---
@@ -109,7 +113,7 @@ function onMapClick(e) {
     }
     document.getElementById('stop-lat-input').value = e.latlng.lat;
     document.getElementById('stop-lng-input').value = e.latlng.lng;
-    document.getElementById('stop-index-input').value = ""; // Nueva parada
+    document.getElementById('stop-index-input').value = "";
     document.getElementById('modal-title').textContent = "Añadir Parada";
     document.getElementById('arrival-time-input').value = "";
     document.getElementById('departure-time-input').value = "";
@@ -146,9 +150,9 @@ function saveStopModalAction() {
 
     const stopData = { lat, lng, arrivalTime, departureTime };
 
-    if (stopIndex === "") { // Nueva parada
+    if (stopIndex === "") {
         currentTempRoute.stops.push(stopData);
-    } else { // Editando parada
+    } else {
         currentTempRoute.stops[parseInt(stopIndex)] = stopData;
     }
     renderCurrentStopsList();
@@ -163,7 +167,6 @@ function startNewRouteAction() {
     }
     const routeNameInput = document.getElementById('route-name-input');
     currentTempRoute = { name: routeNameInput.value.trim() || "Ruta Sin Nombre", stops: [] };
-    // No limpiar routeNameInput.value aquí, el usuario podría querer usarlo
     renderCurrentStopsList();
     clearMapStopMarkersAndPolyline();
     alert("Nueva ruta iniciada. Añade paradas tocando el mapa o edita una existente.");
@@ -171,7 +174,7 @@ function startNewRouteAction() {
 
 function renderCurrentStopsList() {
     const listElement = document.getElementById('current-stops-list');
-    listElement.innerHTML = ''; // Limpiar lista
+    listElement.innerHTML = '';
     currentTempRoute.stops.forEach((stop, index) => {
         const listItem = document.createElement('li');
         listItem.innerHTML = `
@@ -192,7 +195,6 @@ function renderCurrentStopsList() {
     drawRouteOnMap(currentTempRoute.stops);
 }
 
-// Delegación de eventos para botones de la lista de paradas
 document.getElementById('current-stops-list').addEventListener('click', (event) => {
     const target = event.target;
     if (target.tagName === 'BUTTON') {
@@ -204,7 +206,6 @@ document.getElementById('current-stops-list').addEventListener('click', (event) 
         else if (action === 'move-down') moveStopDown(index);
     }
 });
-
 
 function editStop(index) {
     if (isTracking) {
@@ -272,29 +273,27 @@ function saveRouteAction() {
         alert("Detén el seguimiento para guardar la ruta.");
         return;
     }
-    // Asignar nombre si está vacío pero hay paradas
     if (!currentTempRoute.name && currentTempRoute.stops.length >= 2) {
         let routeNameFromInput = document.getElementById('route-name-input').value.trim();
         if (!routeNameFromInput) {
             const newName = prompt("Ingresa un nombre para esta ruta:", "Ruta Guardada");
-            if (!newName) return; // Usuario canceló o no ingresó nombre
+            if (!newName) return;
             currentTempRoute.name = newName;
-            document.getElementById('route-name-input').value = newName; // Actualizar en el input
+            document.getElementById('route-name-input').value = newName;
         } else {
-             currentTempRoute.name = routeNameFromInput;
+            currentTempRoute.name = routeNameFromInput;
         }
     } else if (!currentTempRoute.name && currentTempRoute.stops.length < 2) {
-         alert("La ruta debe tener un nombre y al menos 2 paradas.");
-         return;
-    } else if (!currentTempRoute.name) { // No hay paradas y tampoco nombre en input
-         let routeNameFromInput = document.getElementById('route-name-input').value.trim();
-         if (!routeNameFromInput) {
+        alert("La ruta debe tener un nombre y al menos 2 paradas.");
+        return;
+    } else if (!currentTempRoute.name) {
+        let routeNameFromInput = document.getElementById('route-name-input').value.trim();
+        if (!routeNameFromInput) {
             alert("Por favor, asigna un nombre a la ruta.");
             return;
-         }
-         currentTempRoute.name = routeNameFromInput;
+        }
+        currentTempRoute.name = routeNameFromInput;
     }
-
 
     if (currentTempRoute.stops.length < 2) {
         alert("La ruta debe tener al menos 2 paradas para ser guardada.");
@@ -304,12 +303,12 @@ function saveRouteAction() {
     const existingRouteIndex = allSavedRoutes.findIndex(r => r.name === currentTempRoute.name);
     if (existingRouteIndex > -1) {
         if (confirm(`Ya existe una ruta llamada "${currentTempRoute.name}". ¿Deseas sobrescribirla?`)) {
-            allSavedRoutes[existingRouteIndex] = JSON.parse(JSON.stringify(currentTempRoute)); // Deep copy
+            allSavedRoutes[existingRouteIndex] = JSON.parse(JSON.stringify(currentTempRoute));
         } else {
-            return; // No sobrescribir
+            return;
         }
     } else {
-        allSavedRoutes.push(JSON.parse(JSON.stringify(currentTempRoute))); // Deep copy
+        allSavedRoutes.push(JSON.parse(JSON.stringify(currentTempRoute)));
     }
 
     saveRoutesToLocalStorage();
@@ -338,11 +337,10 @@ function populateSavedRoutesSelect() {
         option.textContent = route.name;
         select.appendChild(option);
     });
-    // Intentar restaurar la selección si aún existe el índice
     if (allSavedRoutes[parseInt(currentVal)]) {
         select.value = currentVal;
     } else {
-        select.value = ""; // Si no existe, limpiar selección
+        select.value = "";
     }
 }
 
@@ -356,7 +354,7 @@ function loadRouteForEditingAction() {
         alert("Por favor, selecciona una ruta para cargar.");
         return;
     }
-    currentTempRoute = JSON.parse(JSON.stringify(allSavedRoutes[parseInt(selectedIndex)])); // Deep copy
+    currentTempRoute = JSON.parse(JSON.stringify(allSavedRoutes[parseInt(selectedIndex)]));
     document.getElementById('route-name-input').value = currentTempRoute.name;
     renderCurrentStopsList();
     alert(`Ruta "${currentTempRoute.name}" cargada para edición.`);
@@ -379,18 +377,16 @@ function deleteSelectedRouteAction() {
     if (confirm(`¿Estás seguro de que deseas eliminar la ruta "${routeNameToDelete}"? Esta acción no se puede deshacer.`)) {
         allSavedRoutes.splice(parseInt(selectedIndex), 1);
         saveRoutesToLocalStorage();
-        populateSavedRoutesSelect(); // Esto también limpiará la selección
+        populateSavedRoutesSelect();
 
-        // Si la ruta eliminada era la que estaba en currentTempRoute
         if (currentTempRoute.name === routeNameToDelete) {
             document.getElementById('route-name-input').value = "";
             currentTempRoute = { name: "", stops: [] };
-            renderCurrentStopsList(); // Limpia la lista de paradas
+            renderCurrentStopsList();
         }
         alert(`Ruta "${routeNameToDelete}" eliminada.`);
     }
 }
-
 
 // --- GESTIÓN DE COLA DE SEGUIMIENTO ---
 function addToTrackingQueueAction() {
@@ -436,20 +432,23 @@ function startTrackingAction() {
 
     isTracking = true;
     currentTrackingRouteIndex = 0;
-    currentTrackingStopIndex = -1; // Partimos *antes* de la primera parada de la ruta
+    currentTrackingStopIndex = -1;
 
     document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
 
-    clearMapStopMarkersAndPolyline(); // Limpiar marcadores de edición
-    drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops); // Dibujar la ruta activa
+    clearMapStopMarkersAndPolyline();
+    drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops);
 
-    advanceToNextLogicalStop(); // Para configurar la primera parada y calcular tiempo
+    advanceToNextLogicalStop();
     updateTrackingButtonsState();
     updateManualControlsState();
 
     if (trackingInterval) clearInterval(trackingInterval);
-    trackingInterval = setInterval(calculateTimeDifference, 1000); // Refresca cada segundo
+    trackingInterval = setInterval(() => {
+        calculateTimeDifference(); // Esto ahora también llamará a updatePassengerTrackingStatus
+    }, 1000);
 
+    updatePassengerTrackingStatus(true); // Marcar como rastreando para pasajeros
     alert("Seguimiento iniciado.");
 }
 
@@ -460,26 +459,26 @@ function stopTrackingAction() {
     trackingInterval = null;
     currentTrackingRouteIndex = -1;
     currentTrackingStopIndex = -1;
+    lastCalculatedDiffMillis = 0; // Resetear
     document.getElementById('time-difference-display').textContent = "--:--";
     document.getElementById('time-difference-display').className = "";
     document.getElementById('next-stop-info').textContent = "Ninguna";
     document.getElementById('current-route-info').textContent = "Ninguna";
     updateTrackingButtonsState();
     updateManualControlsState();
+    updatePassengerTrackingStatus(false); // Marcar como NO rastreando para pasajeros
     alert("Seguimiento detenido.");
 }
 
 function updateTrackingButtonsState() {
     const startBtn = document.getElementById('start-tracking-btn');
     const stopBtn = document.getElementById('stop-tracking-btn');
-    // Afectar solo botones y el input de nombre de ruta, no los de tiempo en el modal
     const routeMgmtInputsAndButtons = document.querySelectorAll(
         '#controls-panel .control-group:nth-child(2) button, #route-name-input'
     );
     const loadRouteControls = document.querySelectorAll(
         '#load-route-for-editing-btn, #delete-selected-route-btn, #add-to-tracking-queue-btn, #saved-routes-select, #clear-tracking-queue-btn'
     );
-
 
     if (isTracking) {
         startBtn.disabled = true;
@@ -508,88 +507,80 @@ function updateManualControlsState() {
     }
 }
 
-
 function manualAdvanceStop(direction) {
     if (!isTracking) return;
 
     const currentRoute = trackingQueue[currentTrackingRouteIndex];
-    let tempProspectiveStopIndex = currentTrackingStopIndex + direction; // A dónde iríamos
+    let tempProspectiveStopIndex = currentTrackingStopIndex + direction;
 
-    if (direction > 0) { // Avanzando
-        // tempProspectiveStopIndex es el índice de la parada *desde la que saldríamos*
-        // tempProspectiveStopIndex + 1 es la parada *a la que llegaríamos*
-        if (tempProspectiveStopIndex + 1 < currentRoute.stops.length) { // Hay una siguiente parada en esta ruta
+    if (direction > 0) {
+        if (tempProspectiveStopIndex + 1 < currentRoute.stops.length) {
             currentTrackingStopIndex = tempProspectiveStopIndex;
-        } else { // Fin de la ruta actual, intentar pasar a la siguiente ruta
+        } else {
             currentTrackingRouteIndex++;
-            if (currentTrackingRouteIndex < trackingQueue.length) { // Hay más rutas
-                currentTrackingStopIndex = -1; // Para que apunte antes de la primera parada de la nueva ruta
+            if (currentTrackingRouteIndex < trackingQueue.length) {
+                currentTrackingStopIndex = -1;
                 document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
                 drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops);
-                advanceToNextLogicalStop(true); // Forzar avance lógico para la nueva ruta
+                advanceToNextLogicalStop(true);
                 return;
-            } else { // Fin de todas las rutas
+            } else {
                 alert("Has llegado al final de todas las rutas.");
                 stopTrackingAction();
                 return;
             }
         }
-    } else { // Retrocediendo
-        // tempProspectiveStopIndex es el índice de la parada desde la que saldríamos (al retroceder)
-        if (tempProspectiveStopIndex >= -1) { // Aún dentro de la ruta actual o al inicio conceptual
+    } else {
+        if (tempProspectiveStopIndex >= -1) {
             currentTrackingStopIndex = tempProspectiveStopIndex;
-        } else { // Intentar retroceder a la ruta anterior
+        } else {
             currentTrackingRouteIndex--;
-            if (currentTrackingRouteIndex >= 0) { // Hay ruta anterior
+            if (currentTrackingRouteIndex >= 0) {
                 const prevRoute = trackingQueue[currentTrackingRouteIndex];
-                // Queremos que la *próxima* parada sea la última de la ruta anterior.
-                // Entonces, la parada *desde la que salimos* debe ser la penúltima.
                 currentTrackingStopIndex = prevRoute.stops.length - 2;
                 document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
                 drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops);
-            } else { // Inicio de la primera ruta
+            } else {
                 alert("Ya estás al inicio de la primera ruta.");
-                currentTrackingRouteIndex = 0; // No ir a -1
-                currentTrackingStopIndex = -1; // Mantener en el inicio conceptual
-                // No hacer nada más, ya está en el límite
-                updateNextStopDisplayAndCalculateTime(); // Para recalcular/limpiar display
+                currentTrackingRouteIndex = 0;
+                currentTrackingStopIndex = -1;
+                updateNextStopDisplayAndCalculateTime();
                 return;
             }
         }
     }
     updateNextStopDisplayAndCalculateTime();
+    calculateTimeDifference(); // Forzar recálculo y actualización para pasajeros
 }
-
 
 function advanceToNextLogicalStop(forceManualAdvance = false) {
     if (!isTracking) return;
 
     const manualMode = document.getElementById('manual-mode-checkbox').checked;
     if (!forceManualAdvance && manualMode) {
-        updateNextStopDisplayAndCalculateTime(); // Solo recalcular para la parada actual
+        updateNextStopDisplayAndCalculateTime();
         return;
     }
 
-    currentTrackingStopIndex++; // Avanzamos "desde" la siguiente parada
+    currentTrackingStopIndex++;
     const currentRoute = trackingQueue[currentTrackingRouteIndex];
 
-    // Si `currentTrackingStopIndex + 1` es la última parada o más, hemos completado el último tramo.
     if (currentTrackingStopIndex + 1 >= currentRoute.stops.length) {
-        currentTrackingRouteIndex++; // Intentar pasar a la siguiente ruta
-        if (currentTrackingRouteIndex < trackingQueue.length) { // Hay más rutas
-            currentTrackingStopIndex = -1; // Reiniciar índice de parada para la nueva ruta
+        currentTrackingRouteIndex++;
+        if (currentTrackingRouteIndex < trackingQueue.length) {
+            currentTrackingStopIndex = -1;
             alert(`Ruta "${currentRoute.name}" completada. Iniciando ruta "${trackingQueue[currentTrackingRouteIndex].name}".`);
             document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
             drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops);
-            advanceToNextLogicalStop(forceManualAdvance); // Llamada recursiva para la nueva ruta
+            advanceToNextLogicalStop(forceManualAdvance);
         } else {
             alert("¡Todas las rutas completadas!");
-            stopTrackingAction();
+            stopTrackingAction(); // Esto actualizará el estado para pasajeros
         }
-        return; // Salir porque ya se manejó el cambio de ruta o fin
+        return;
     }
-    // Si llegamos aquí, seguimos en la misma ruta, o es la primera parada de una nueva ruta
     updateNextStopDisplayAndCalculateTime();
+    calculateTimeDifference(); // Actualizar info para pasajeros al cambiar de parada
 }
 
 function updateNextStopDisplayAndCalculateTime() {
@@ -600,23 +591,21 @@ function updateNextStopDisplayAndCalculateTime() {
     }
 
     const currentRoute = trackingQueue[currentTrackingRouteIndex];
-    // La parada "desde" es currentTrackingStopIndex (si >=0), la parada "hacia" es currentTrackingStopIndex + 1
     const nextStopTargetIndex = currentTrackingStopIndex + 1;
 
     if (nextStopTargetIndex < currentRoute.stops.length) {
         const nextStop = currentRoute.stops[nextStopTargetIndex];
         document.getElementById('next-stop-info').textContent = `Parada ${nextStopTargetIndex + 1} (Lleg. ${nextStop.arrivalTime})`;
     } else {
-        // Esto sucedería si estamos en la última parada y no hay "siguiente"
         document.getElementById('next-stop-info').textContent = "Fin de ruta";
     }
-    calculateTimeDifference(); // Calcular inmediatamente
+    // calculateTimeDifference se llama en el intervalo o al cambiar de parada explícitamente
 }
 
-
-// --- CÁLCULO DE DIFERENCIA DE TIEMPO ---
+// --- CÁLCULO DE DIFERENCIA DE TIEMPO Y ACTUALIZACIÓN PARA PASAJEROS ---
 function calculateTimeDifference() {
     if (!isTracking || !lastKnownPosition || currentTrackingRouteIndex < 0 || currentTrackingRouteIndex >= trackingQueue.length) {
+        updatePassengerTrackingStatus(isTracking); // Actualizar si está offline o con datos inválidos
         return;
     }
 
@@ -624,21 +613,16 @@ function calculateTimeDifference() {
     const fromStopIndex = currentTrackingStopIndex;
     const toStopIndex = currentTrackingStopIndex + 1;
 
-    // Validar que tenemos un tramo válido
     if (fromStopIndex < 0 || toStopIndex >= currentRoute.stops.length) {
-        // Si estamos antes de la primera parada (fromStopIndex = -1), no hay tramo "desde".
-        // Si toStopIndex está fuera de rango, ya pasamos la última parada del tramo.
         if (!document.getElementById('manual-mode-checkbox').checked && fromStopIndex >= 0 && toStopIndex >= currentRoute.stops.length) {
-            // Si hemos "llegado" a la última parada y no es modo manual, intentar avanzar.
            advanceToNextLogicalStop();
         } else if (toStopIndex >= currentRoute.stops.length) {
             document.getElementById('time-difference-display').textContent = "FIN";
             document.getElementById('time-difference-display').className = "";
         } else {
-             // Caso: fromStopIndex = -1 (antes de la primera parada real)
-             // Podríamos mostrar un ETA a la primera parada, pero no es el cálculo de +/-
             document.getElementById('time-difference-display').textContent = "--:--";
         }
+        updatePassengerTrackingStatus(true); // Podría ser fin de ruta, pero aún "tracking"
         return;
     }
 
@@ -646,109 +630,131 @@ function calculateTimeDifference() {
     const toStop = currentRoute.stops[toStopIndex];
     const currentPositionLatLng = L.latLng(lastKnownPosition.lat, lastKnownPosition.lng);
 
-    // 1. Convertir horarios de parada a objetos Date para cálculos con timestamps
     const [depH, depM] = fromStop.departureTime.split(':').map(Number);
-    let departureDateTime = new Date(); // Usar fecha actual como base
+    let departureDateTime = new Date();
     departureDateTime.setHours(depH, depM, 0, 0);
 
     const [arrH, arrM] = toStop.arrivalTime.split(':').map(Number);
-    let scheduledArrivalDateTimeAtNextStop = new Date(); // Usar fecha actual como base
+    let scheduledArrivalDateTimeAtNextStop = new Date();
     scheduledArrivalDateTimeAtNextStop.setHours(arrH, arrM, 0, 0);
 
-    // 2. Ajustar fecha de llegada si cruza medianoche
     if (scheduledArrivalDateTimeAtNextStop.getTime() < departureDateTime.getTime()) {
         scheduledArrivalDateTimeAtNextStop.setDate(scheduledArrivalDateTimeAtNextStop.getDate() + 1);
     }
 
-    // 3. Calcular duración total programada del tramo en milisegundos
     const totalLegScheduledTimeMillis = scheduledArrivalDateTimeAtNextStop.getTime() - departureDateTime.getTime();
-    if (totalLegScheduledTimeMillis <= 0 && !(depH === arrH && depM === arrM)) { // Si el tiempo es 0 o negativo y no es una parada de espera
-        console.warn("Tiempo de tramo inválido o cero entre paradas. Revise horarios.", fromStop, toStop);
+    if (totalLegScheduledTimeMillis <= 0 && !(depH === arrH && depM === arrM)) {
+        console.warn("SmartMovePro: Tiempo de tramo inválido o cero.", fromStop, toStop);
         document.getElementById('time-difference-display').textContent = "Error Horario";
+        updatePassengerTrackingStatus(true, true); // Marcar error para pasajeros
         return;
     }
 
-
-    // 4. Calcular proporción de distancia cubierta
     const coordA = L.latLng(fromStop.lat, fromStop.lng);
     const coordB = L.latLng(toStop.lat, toStop.lng);
     const totalLegDistance = coordA.distanceTo(coordB);
     const distanceFromStartOfLeg = coordA.distanceTo(currentPositionLatLng);
 
     let proportionOfDistanceCovered = 0;
-    if (totalLegDistance > 1) { // Evitar división por cero si paradas están en el mismo sitio
+    if (totalLegDistance > 1) {
         proportionOfDistanceCovered = distanceFromStartOfLeg / totalLegDistance;
-        proportionOfDistanceCovered = Math.max(0, Math.min(1, proportionOfDistanceCovered)); // Clamp entre 0 y 1
-    } else if (distanceFromStartOfLeg > 1) { // Estamos más allá del destino o las paradas coinciden pero nos movimos
-        proportionOfDistanceCovered = 1; // Considerar cubierto
-    } // Si totalLegDistance es 0 y distanceFromStartOfLeg es 0, proportion es 0, está bien.
+        proportionOfDistanceCovered = Math.max(0, Math.min(1, proportionOfDistanceCovered));
+    } else if (distanceFromStartOfLeg > 1) {
+        proportionOfDistanceCovered = 1;
+    }
 
-
-    // 5. Calcular la hora programada (timestamp) en la posición actual del chófer
     const scheduledTimeAtCurrentPositionMillis = departureDateTime.getTime() + (proportionOfDistanceCovered * totalLegScheduledTimeMillis);
-
-    // 6. Obtener hora actual (timestamp)
     const currentTimeMillis = new Date().getTime();
+    lastCalculatedDiffMillis = scheduledTimeAtCurrentPositionMillis - currentTimeMillis; // Guardar para pasajeros
 
-    // 7. Calcular diferencia en milisegundos y luego en minutos (decimal)
-    const diffInMillis = scheduledTimeAtCurrentPositionMillis - currentTimeMillis;
-    const diffInTotalMinutes = diffInMillis / (1000 * 60);
+    const diffInTotalMinutes = lastCalculatedDiffMillis / (1000 * 60);
 
-    // 8. Formatear y mostrar
     document.getElementById('time-difference-display').textContent = formatMinutesToTimeDiff(diffInTotalMinutes);
     const displayElement = document.getElementById('time-difference-display');
 
-    if (diffInTotalMinutes < -0.1) { // Atrasado (más de 6s)
+    if (diffInTotalMinutes < -0.1) {
         displayElement.className = 'late';
-    } else if (diffInTotalMinutes > 0.1) { // Adelantado (más de 6s)
+    } else if (diffInTotalMinutes > 0.1) {
         displayElement.className = 'early';
     } else {
         displayElement.className = 'on-time';
     }
 
-    // Comprobar proximidad para avance automático
+    updatePassengerTrackingStatus(true); // Actualizar estado para pasajeros con los nuevos datos
+
     const distanceToNextStopTarget = currentPositionLatLng.distanceTo(coordB);
     if (!document.getElementById('manual-mode-checkbox').checked && distanceToNextStopTarget < PROXIMITY_THRESHOLD_METERS) {
-        // Asegurarse de que no está ya en la última parada de la última ruta antes de avanzar.
         const isLastStopOfLastRoute = (currentTrackingRouteIndex === trackingQueue.length - 1) &&
                                       (toStopIndex === currentRoute.stops.length - 1);
         if (!isLastStopOfLastRoute) {
-            advanceToNextLogicalStop();
-        } else if (distanceToNextStopTarget < PROXIMITY_THRESHOLD_METERS / 2) { 
-             // Si está muy cerca de la última parada de todo, podría marcar como FIN
+            advanceToNextLogicalStop(); // Esto también llamará a calculateTimeDifference y updatePassengerTrackingStatus
+        } else if (distanceToNextStopTarget < PROXIMITY_THRESHOLD_METERS / 2) {
             document.getElementById('time-difference-display').textContent = "FIN";
             document.getElementById('time-difference-display').className = "";
-            // Considerar detener el seguimiento aquí si se desea.
-    }
-}
-
-// Al detener el seguimiento explícitamente:
-function stopTrackingAction() {
-    // ... (código existente) ...
-    const offlineStatus = { isTracking: false, lastUpdateTime: new Date().getTime() };
-    localStorage.setItem('smartMoveProTrackingStatus', JSON.stringify(offlineStatus));
-    // ... (resto del código existente) ...
-}
-
-// Es buena idea también poner el estado offline si la página del chofer se cierra o recarga
-window.addEventListener('beforeunload', () => {
-    if (isTracking) { // Si estaba trackeando y se cierra, otros no lo sabrán
-        // Es difícil garantizar esto, pero podemos intentarlo
-        const offlineStatus = { isTracking: false, reason: "Chofer app closed/reloaded", lastUpdateTime: new Date().getTime() };
-        // localStorage.setItem('smartMoveProTrackingStatus', JSON.stringify(offlineStatus)); // Puede no ejecutarse siempre
+            // El estado para pasajeros se actualizará en la próxima llamada o si se detiene el seguimiento.
         }
     }
 }
 
+// --- FUNCIÓN PARA ACTUALIZAR DATOS PARA PASAJEROS ---
+function updatePassengerTrackingStatus(isCurrentlyTracking, hasError = false) {
+    let statusPayload;
+
+    if (!isCurrentlyTracking || hasError) {
+        statusPayload = {
+            isTracking: false,
+            hasError: hasError,
+            lastUpdateTime: new Date().getTime()
+        };
+    } else {
+        // Asegurarse de que tenemos datos válidos para enviar
+        if (currentTrackingRouteIndex < 0 || currentTrackingRouteIndex >= trackingQueue.length ||
+            currentTrackingStopIndex < -1) { // currentTrackingStopIndex puede ser -1 (antes de la primera parada)
+            statusPayload = { isTracking: false, lastUpdateTime: new Date().getTime(), reason: "Invalid tracking indices" };
+        } else {
+            const currentRoute = trackingQueue[currentTrackingRouteIndex];
+            let nextStopDataForPassenger = null;
+            let nextBusStopArrivalTime = null;
+            let nextBusStopDepartureTime = null;
+
+            if (currentTrackingStopIndex + 1 < currentRoute.stops.length) {
+                 nextStopDataForPassenger = currentRoute.stops[currentTrackingStopIndex + 1];
+                 nextBusStopArrivalTime = nextStopDataForPassenger.arrivalTime;
+                 nextBusStopDepartureTime = nextStopDataForPassenger.departureTime;
+            }
+
+            statusPayload = {
+                isTracking: true,
+                hasError: false,
+                routeName: currentRoute.name,
+                currentStopIndexFromWhichDeparted: currentTrackingStopIndex, // Parada de la que salió el chofer
+                nextStopIndexTowardsWhichHeading: currentTrackingStopIndex + 1, // Parada a la que se dirige
+                currentBusDelayOrAheadMillis: lastCalculatedDiffMillis, // La diferencia de tiempo actual del chofer
+                lastKnownPosition: lastKnownPosition, // {lat, lng} - Aunque "Cuando Llega" no lo use en mapa, podría ser útil para otros cálculos
+                lastUpdateTime: new Date().getTime(),
+                // Info de la próxima parada del bus para referencia
+                nextBusStopArrivalTime: nextBusStopArrivalTime,
+                nextBusStopDepartureTime: nextBusStopDepartureTime,
+            };
+        }
+    }
+    try {
+        localStorage.setItem('smartMoveProTrackingStatus', JSON.stringify(statusPayload));
+    } catch (e) {
+        console.error("SmartMovePro: Error saving tracking status to localStorage", e);
+    }
+}
+
+
 // --- UTILIDADES DE TIEMPO ---
-function timeToMinutes(timeInput) { // timeInput puede ser "HH:MM" o un objeto Date
+function timeToMinutes(timeInput) {
     let hours, minutes;
     if (typeof timeInput === 'string') {
         [hours, minutes] = timeInput.split(':').map(Number);
     } else if (timeInput instanceof Date) {
         hours = timeInput.getHours();
         minutes = timeInput.getMinutes();
-    } else { //Fallback o error
+    } else {
         return 0;
     }
     return hours * 60 + minutes;
@@ -760,7 +766,7 @@ function formatMinutesToTimeDiff(totalMinutesWithFraction) {
     let mm = Math.floor(absTotalMinutes);
     let ss = Math.round((absTotalMinutes - mm) * 60);
 
-    if (ss === 60) { // Corregir si los segundos redondean a 60
+    if (ss === 60) {
         mm += 1;
         ss = 0;
     }
@@ -783,3 +789,14 @@ function bindEventListeners() {
     document.getElementById('prev-stop-btn').addEventListener('click', () => manualAdvanceStop(-1));
     document.getElementById('next-stop-btn').addEventListener('click', () => manualAdvanceStop(1));
 }
+
+// Asegurarse de que el estado de los pasajeros se limpie si el chofer cierra la pestaña bruscamente
+window.addEventListener('beforeunload', () => {
+    // Esta es una "mejor intento", no garantizado que se ejecute completamente
+    // Especialmente si es un cierre forzado.
+    if (isTracking) {
+         console.log("SmartMovePro: Attempting to set offline status for passengers before unload.");
+         // No podemos hacer mucho aquí si el navegador cierra la app del chofer.
+         // La app de pasajeros dependerá del 'lastUpdateTime' para determinar si los datos son frescos.
+    }
+});
