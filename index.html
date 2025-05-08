@@ -4,35 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Smart Move Pro</title>
-
-    <!-- PWA Manifest and Theme -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#007bff">
-
-    <!-- iOS specific PWA tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SmartMove">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-
-    <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
-
-    <!-- Leaflet CSS: Es CRUCIAL que esto esté ANTES de tu CSS personalizado si anulas estilos de Leaflet,
-         y ANTES de que se ejecute el JS de Leaflet. -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin=""/>
-    
-    <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div id="app-container">
-        <!-- El mapa necesita una altura definida vía CSS para mostrarse -->
-        <div id="map"></div> 
-        
+        <div id="map"></div>
         <div id="controls-panel">
             <div id="time-difference-display">--:--</div>
 
@@ -51,13 +38,43 @@
             <div class="control-group">
                 <h3>Gestión de Rutas</h3>
                 <input type="text" id="route-name-input" placeholder="Nombre de la Nueva Ruta">
-                <button id="start-new-route-btn">Iniciar Nueva Ruta / Limpiar Paradas</button>
+                <button id="start-new-route-btn">Iniciar Nueva Ruta / Limpiar Actual</button>
                 
-                <h4>Paradas (Arr: Llegada, Dep: Salida)</h4>
+                <div id="route-creation-steps">
+                    <h4>Paso 1: Punto de Inicio</h4>
+                    <button id="set-start-point-btn">Fijar Punto de Inicio (tocar mapa)</button>
+                    <div id="start-point-info" class="point-info-box" style="display:none;">
+                        <p><strong>Inicio:</strong> <span id="start-point-name-display">Inicio Ruta</span> 
+                           (<button class="link-button" data-point-type="start">Renombrar</button>)
+                        </p>
+                        <label for="start-time-input">Hora Salida Inicio:</label>
+                        <input type="time" id="start-time-input">
+                        <small><span id="start-point-coords"></span></small>
+                    </div>
+
+                    <h4>Paso 2: Punto Final</h4>
+                    <button id="set-end-point-btn" disabled>Fijar Punto Final (tocar mapa)</button>
+                     <div id="end-point-info" class="point-info-box" style="display:none;">
+                        <p><strong>Fin:</strong> <span id="end-point-name-display">Fin Ruta</span> 
+                           (<button class="link-button" data-point-type="end">Renombrar</button>)
+                        </p>
+                        <label for="end-time-input">Hora Llegada Fin:</label>
+                        <input type="time" id="end-time-input">
+                        <small><span id="end-point-coords"></span></small>
+                    </div>
+
+                    <h4>Paso 3: Paradas Intermedias (Opcional)</h4>
+                    <p><small>Toca el mapa para añadir paradas intermedias.</small></p>
+                    <div>
+                        <input type="checkbox" id="auto-time-intermediate-checkbox" checked>
+                        <label for="auto-time-intermediate-checkbox">Calcular horarios intermedios automáticamente</label>
+                    </div>
+                </div>
+                
+                <h4>Paradas de la Ruta Actual:</h4>
                 <div id="stops-list-container">
                     <ol id="current-stops-list"></ol>
                 </div>
-                <p><small>Toca el mapa para añadir una parada a la ruta actual.</small></p>
                 
                 <button id="save-route-btn" class="success">Guardar Ruta Actual</button>
             </div>
@@ -79,28 +96,32 @@
         </div>
     </div>
 
-    <!-- Modal para añadir/editar parada -->
+    <!-- Modal para editar parada INTERMEDIA (o definir tiempos si no es auto) -->
     <div id="stop-modal" class="modal">
         <div class="modal-content">
-            <h4 id="modal-title">Añadir Parada</h4>
+            <h4 id="modal-title">Añadir/Editar Parada Intermedia</h4>
             <input type="hidden" id="stop-lat-input">
             <input type="hidden" id="stop-lng-input">
             <input type="hidden" id="stop-index-input">
-            <label for="arrival-time-input">Hora de Llegada Programada:</label>
-            <input type="time" id="arrival-time-input" required>
-            <label for="departure-time-input">Hora de Salida Programada:</label>
-            <input type="time" id="departure-time-input" required>
+            
+            <label for="stop-name-input">Nombre Parada (Opcional):</label>
+            <input type="text" id="stop-name-input" placeholder="Ej: Parada Av. Principal">
+
+            <div id="manual-time-fields">
+                <label for="arrival-time-input">Hora de Paso/Llegada:</label>
+                <input type="time" id="arrival-time-input">
+                <!-- Para paradas intermedias, la salida es virtualmente igual a la llegada -->
+            </div>
+            <p id="auto-time-info" style="display:none;">El horario se calculará automáticamente.</p>
+            
             <button id="save-stop-btn" class="success">Guardar Parada</button>
             <button id="cancel-stop-btn" class="secondary">Cancelar</button>
         </div>
     </div>
 
-    <!-- Leaflet JS: Debe cargarse ANTES de tu app.js si app.js usa L -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
-    
-    <!-- Custom JS: Al final del body para asegurar que el DOM está cargado -->
     <script src="js/app.js"></script>
 </body>
 </html>
