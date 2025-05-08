@@ -719,43 +719,6 @@ function calculateTimeDifference() {
             document.getElementById('time-difference-display').textContent = "FIN";
             document.getElementById('time-difference-display').className = "";
             // Considerar detener el seguimiento aquí si se desea.
-
-            // En js/app.js de Smart Move Pro
-
-// ... (código existente) ...
-
-// Dentro de la función calculateTimeDifference, o en el setInterval de seguimiento
-    // ... (código existente de calculateTimeDifference) ...
-
-    if (isTracking && currentTrackingRouteIndex >= 0 && currentTrackingStopIndex >= -1) {
-        const currentRoute = trackingQueue[currentTrackingRouteIndex];
-        let nextStopData = null;
-        if (currentTrackingStopIndex + 1 < currentRoute.stops.length) {
-             nextStopData = currentRoute.stops[currentTrackingStopIndex + 1];
-        }
-
-        const trackingStatusForPassenger = {
-            isTracking: true,
-            routeName: currentRoute.name,
-            // currentStopIndex es la parada DESDE la que partió el chofer
-            currentStopIndexFromWhichDeparted: currentTrackingStopIndex,
-            // nextStopIndex es la parada HACIA la que se dirige el chofer
-            nextStopIndexTowardsWhichHeading: currentTrackingStopIndex + 1,
-            // diffInMillis: es (scheduledTimeAtCurrentPositionMillis - currentTimeMillis)
-            // Positivo = adelantado (llegó ANTES de lo programado a su pos actual)
-            // Negativo = atrasado (llegó DESPUÉS de lo programado a su pos actual)
-            currentBusDelayOrAheadMillis: (typeof diffInMillis !== 'undefined') ? diffInMillis : 0, // diffInMillis viene de calculateTimeDifference
-            lastKnownPosition: lastKnownPosition, // {lat, lng}
-            lastUpdateTime: new Date().getTime(),
-            // Para referencia del pasajero, incluimos los horarios de la próxima parada del bus
-            nextBusStopArrivalTime: nextStopData ? nextStopData.arrivalTime : null,
-            nextBusStopDepartureTime: nextStopData ? nextStopData.departureTime : null
-        };
-        localStorage.setItem('smartMoveProTrackingStatus', JSON.stringify(trackingStatusForPassenger));
-    } else if (!isTracking) {
-        // Si el seguimiento se detiene, limpiar el estado o marcarlo como no activo
-        const offlineStatus = { isTracking: false, lastUpdateTime: new Date().getTime() };
-        localStorage.setItem('smartMoveProTrackingStatus', JSON.stringify(offlineStatus));
     }
 }
 
