@@ -4,6 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Smart Move Pro</title>
+
+    <!-- PWA Manifest and Theme -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff">
+
+    <!-- iOS specific PWA tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SmartMove">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"> <!-- e.g., 180x180px -->
+
+    <!-- Favicon (puedes usar uno de tus PNGs o un .ico) -->
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32x32.png"> <!-- Ejemplo -->
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16x16.png"> <!-- Ejemplo -->
+    <!-- Si tienes un SVG como favicon principal (más escalable) -->
+    <!-- <link rel="icon" href="icon.svg" type="image/svg+xml"> -->
+
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin=""/>
@@ -253,6 +271,98 @@
     </div>
 
     <script>
+        // Service Worker Registration (Embebido como string)
+        const swCode = `
+            const CACHE_NAME = 'smartmovepro-cache-v1';
+            // Lista de archivos para precachear (la app shell básica)
+            // Idealmente, las rutas a CSS y JS externos también irían aquí si los tuvieras separados.
+            // Como todo está en un HTML, el propio HTML es el principal asset.
+            const urlsToCache = [
+                './smart_move_pro.html', // O la URL raíz si es servido desde '/'
+                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+                // Puedes añadir aquí las rutas a tus íconos si quieres que se cacheen explícitamente
+                // 'icons/icon-192x192.png',
+                // 'icons/apple-touch-icon.png'
+            ];
+
+            self.addEventListener('install', event => {
+                event.waitUntil(
+                    caches.open(CACHE_NAME)
+                        .then(cache => {
+                            console.log('Opened cache');
+                            // Es importante que si uno de estos falla, el SW no se instale.
+                            // Para assets críticos como el HTML principal.
+                            // Para assets no críticos (ej. imágenes grandes), puedes usar cache.addAll(urls).catch(...)
+                            return cache.addAll(urlsToCache);
+                        })
+                );
+                self.skipWaiting(); // Forzar al SW a activarse inmediatamente
+            });
+
+            self.addEventListener('activate', event => {
+                const cacheWhitelist = [CACHE_NAME];
+                event.waitUntil(
+                    caches.keys().then(cacheNames => {
+                        return Promise.all(
+                            cacheNames.map(cacheName => {
+                                if (cacheWhitelist.indexOf(cacheName) === -1) {
+                                    return caches.delete(cacheName);
+                                }
+                            })
+                        );
+                    })
+                );
+                return self.clients.claim(); // Tomar control de los clientes (páginas) inmediatamente
+            });
+
+            self.addEventListener('fetch', event => {
+                event.respondWith(
+                    caches.match(event.request)
+                        .then(response => {
+                            // Cache hit - return response
+                            if (response) {
+                                return response;
+                            }
+                            // Si no está en caché, ir a la red
+                            return fetch(event.request).then(
+                                networkResponse => {
+                                    // Opcional: Si quieres cachear nuevas peticiones dinámicamente
+                                    // if(!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+                                    //    return networkResponse;
+                                    // }
+                                    // const responseToCache = networkResponse.clone();
+                                    // caches.open(CACHE_NAME)
+                                    //   .then(cache => {
+                                    //     cache.put(event.request, responseToCache);
+                                    //   });
+                                    return networkResponse;
+                                }
+                            );
+                        }
+                    )
+                );
+            });
+        `;
+
+        if ('serviceWorker' in navigator) {
+            // Crear un Blob con el código del Service Worker
+            const swBlob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(swBlob);
+
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register(swUrl) // Usar la URL del Blob
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('ServiceWorker registration failed: ', error);
+                    });
+            });
+        }
+
+
+        // --- RESTO DEL CÓDIGO DE LA APLICACIÓN (SIN CAMBIOS) ---
         // Variables Globales
         let map;
         let currentPositionMarker;
@@ -329,10 +439,6 @@
             } else {
                 currentPositionMarker.setLatLng([lat, lng]);
             }
-
-            // No es necesario llamar a calculateTimeDifference aquí si ya hay un intervalo.
-            // Se llamará con el intervalo o al cambiar de parada.
-            // Si no hay intervalo y estamos rastreando, podemos llamarlo:
             if (isTracking && !trackingInterval) {
                 calculateTimeDifference();
             }
@@ -340,7 +446,6 @@
 
         function handleLocationError(error) {
             console.warn(`ERROR(${error.code}): ${error.message}`);
-            // Podrías mostrar un mensaje al usuario aquí
         }
         
         function onMapClick(e) {
@@ -377,20 +482,13 @@
                 return;
             }
             
-            // Validar que la hora de salida no sea anterior a la de llegada
-            // Convertir a minutos desde medianoche para comparar
             const arrivalMinutes = timeToMinutes(arrivalTime);
             const departureMinutes = timeToMinutes(departureTime);
 
-            // Si la hora de salida es menor que la de llegada, pero no cruza la medianoche de forma válida
-            // (ej. Llegada 14:00, Salida 13:00 es inválido)
-            // (ej. Llegada 23:00, Salida 01:00 es válido si la salida es del día siguiente, pero aquí son del mismo día conceptual de parada)
-            // Para una misma parada, la salida debe ser igual o posterior a la llegada.
             if (departureMinutes < arrivalMinutes) {
                  alert("La hora de salida de una parada no puede ser anterior a su hora de llegada.");
                  return;
             }
-
 
             const stopData = { lat, lng, arrivalTime, departureTime };
 
@@ -411,7 +509,8 @@
             }
             const routeNameInput = document.getElementById('route-name-input');
             currentTempRoute = { name: routeNameInput.value || "Ruta Sin Nombre", stops: [] };
-            routeNameInput.value = ""; 
+            // No limpiar routeNameInput.value aquí si el usuario podría querer seguir usando ese nombre
+            // routeNameInput.value = ""; 
             renderCurrentStopsList();
             clearMapStopMarkersAndPolyline();
             alert("Nueva ruta iniciada. Añade paradas tocando el mapa o edita una existente.");
@@ -506,13 +605,25 @@
                 return;
             }
             if (!currentTempRoute.name && currentTempRoute.stops.length >= 2) {
-                const newName = prompt("Ingresa un nombre para esta ruta:", "Ruta Guardada");
-                if (!newName) return; 
-                currentTempRoute.name = newName;
-                document.getElementById('route-name-input').value = newName; // Actualizar en el input por si acaso
-            } else if (!currentTempRoute.name) {
-                 alert("Por favor, asigna un nombre a la ruta (en el campo 'Nombre de la Nueva Ruta').");
+                let routeNameFromInput = document.getElementById('route-name-input').value.trim();
+                if (!routeNameFromInput) {
+                    const newName = prompt("Ingresa un nombre para esta ruta:", "Ruta Guardada");
+                    if (!newName) return; 
+                    currentTempRoute.name = newName;
+                    document.getElementById('route-name-input').value = newName; 
+                } else {
+                     currentTempRoute.name = routeNameFromInput;
+                }
+            } else if (!currentTempRoute.name && currentTempRoute.stops.length < 2) {
+                 alert("La ruta debe tener un nombre y al menos 2 paradas.");
                  return;
+            } else if (!currentTempRoute.name) {
+                 let routeNameFromInput = document.getElementById('route-name-input').value.trim();
+                 if (!routeNameFromInput) {
+                    alert("Por favor, asigna un nombre a la ruta.");
+                    return;
+                 }
+                 currentTempRoute.name = routeNameFromInput;
             }
 
 
@@ -550,6 +661,7 @@
         
         function populateSavedRoutesSelect() {
             const select = document.getElementById('saved-routes-select');
+            const currentVal = select.value; // Guardar valor actual para intentar restaurarlo
             select.innerHTML = '<option value="">-- Selecciona una ruta --</option>';
             allSavedRoutes.forEach((route, index) => {
                 const option = document.createElement('option');
@@ -557,6 +669,9 @@
                 option.textContent = route.name;
                 select.appendChild(option);
             });
+            if (currentVal) { // Intentar restaurar la selección
+                select.value = currentVal;
+            }
         }
         
         document.getElementById('load-route-for-editing-btn').addEventListener('click', () => {
@@ -592,13 +707,12 @@
             if (confirm(`¿Estás seguro de que deseas eliminar la ruta "${routeNameToDelete}"? Esta acción no se puede deshacer.`)) {
                 allSavedRoutes.splice(parseInt(selectedIndex), 1);
                 saveRoutesToLocalStorage();
-                populateSavedRoutesSelect();
-
-                // Si la ruta eliminada era la que estaba en currentTempRoute
+                populateSavedRoutesSelect(); // Esto también limpiará la selección si ya no existe
+                
                 if (currentTempRoute.name === routeNameToDelete) {
                     document.getElementById('route-name-input').value = "";
                     currentTempRoute = { name: "", stops: [] };
-                    renderCurrentStopsList(); // Limpia la lista de paradas
+                    renderCurrentStopsList(); 
                 }
                 alert(`Ruta "${routeNameToDelete}" eliminada.`);
             }
@@ -682,7 +796,7 @@
         function updateTrackingButtonsState() {
             const startBtn = document.getElementById('start-tracking-btn');
             const stopBtn = document.getElementById('stop-tracking-btn');
-            const routeMgmtControls = document.querySelectorAll('#controls-panel .control-group:nth-child(2) button, #controls-panel .control-group:nth-child(2) input');
+            const routeMgmtControls = document.querySelectorAll('#controls-panel .control-group:nth-child(2) button, #controls-panel .control-group:nth-child(2) input[type="text"]'); // Solo input de texto
             const loadRouteControls = document.querySelectorAll('#load-route-for-editing-btn, #delete-selected-route-btn, #add-to-tracking-queue-btn, #saved-routes-select, #clear-tracking-queue-btn');
 
 
@@ -690,13 +804,16 @@
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 routeMgmtControls.forEach(el => el.disabled = true);
+                document.getElementById('start-new-route-btn').disabled = true; // Específicamente
                 loadRouteControls.forEach(el => el.disabled = true);
                 document.getElementById('route-name-input').disabled = true;
+
 
             } else {
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
                 routeMgmtControls.forEach(el => el.disabled = false);
+                 document.getElementById('start-new-route-btn').disabled = false; // Específicamente
                 loadRouteControls.forEach(el => el.disabled = false);
                 document.getElementById('route-name-input').disabled = false;
             }
@@ -733,7 +850,7 @@
             const currentRoute = trackingQueue[currentTrackingRouteIndex];
             let tempProspectiveStopIndex = currentTrackingStopIndex + direction;
 
-            if (direction > 0) { // Avanzando
+            if (direction > 0) { 
                 if (tempProspectiveStopIndex + 1 < currentRoute.stops.length) { 
                     currentTrackingStopIndex = tempProspectiveStopIndex;
                 } else { 
@@ -750,7 +867,7 @@
                         return;
                     }
                 }
-            } else { // Retrocediendo
+            } else { 
                  if (tempProspectiveStopIndex >= -1) { 
                     currentTrackingStopIndex = tempProspectiveStopIndex;
                 } else { 
@@ -821,7 +938,6 @@
         }
 
 
-        // --- CÁLCULO DE DIFERENCIA DE TIEMPO (REVISADO) ---
         function calculateTimeDifference() {
             if (!isTracking || !lastKnownPosition || currentTrackingRouteIndex < 0 || currentTrackingRouteIndex >= trackingQueue.length) {
                 return;
@@ -832,17 +948,12 @@
             const toStopIndex = currentTrackingStopIndex + 1;
 
             if (fromStopIndex < 0 || toStopIndex >= currentRoute.stops.length) {
-                // Si estamos antes de la primera parada (fromStopIndex = -1) o después de la última parada útil del tramo.
-                // O si no hay suficientes paradas en la ruta actual.
                 if (!document.getElementById('manual-mode-checkbox').checked && fromStopIndex >= 0 && toStopIndex >= currentRoute.stops.length) {
-                     // Si hemos "llegado" a la última parada y no es modo manual, intentar avanzar.
                     advanceToNextLogicalStop();
                 } else if (toStopIndex >= currentRoute.stops.length) {
                     document.getElementById('time-difference-display').textContent = "FIN";
                     document.getElementById('time-difference-display').className = "";
                 } else {
-                    // Podríamos mostrar tiempo hasta la primera parada si fromStopIndex es -1,
-                    // pero la lógica principal se basa en un tramo.
                     document.getElementById('time-difference-display').textContent = "--:--";
                 }
                 return;
@@ -852,24 +963,20 @@
             const toStop = currentRoute.stops[toStopIndex];
             const currentPositionLatLng = L.latLng(lastKnownPosition.lat, lastKnownPosition.lng);
 
-            // 1. Convertir horarios de parada a objetos Date para cálculos con timestamps
             const [depH, depM] = fromStop.departureTime.split(':').map(Number);
-            let departureDateTime = new Date(); // Usar fecha actual como base
+            let departureDateTime = new Date(); 
             departureDateTime.setHours(depH, depM, 0, 0);
 
             const [arrH, arrM] = toStop.arrivalTime.split(':').map(Number);
-            let scheduledArrivalDateTimeAtNextStop = new Date(); // Usar fecha actual como base
+            let scheduledArrivalDateTimeAtNextStop = new Date(); 
             scheduledArrivalDateTimeAtNextStop.setHours(arrH, arrM, 0, 0);
 
-            // 2. Ajustar fecha de llegada si cruza medianoche
             if (scheduledArrivalDateTimeAtNextStop.getTime() < departureDateTime.getTime()) {
                 scheduledArrivalDateTimeAtNextStop.setDate(scheduledArrivalDateTimeAtNextStop.getDate() + 1);
             }
             
-            // 3. Calcular duración total programada del tramo en milisegundos
             const totalLegScheduledTimeMillis = scheduledArrivalDateTimeAtNextStop.getTime() - departureDateTime.getTime();
 
-            // 4. Calcular proporción de distancia cubierta
             const coordA = L.latLng(fromStop.lat, fromStop.lng);
             const coordB = L.latLng(toStop.lat, toStop.lng);
             const totalLegDistance = coordA.distanceTo(coordB);
@@ -883,50 +990,34 @@
                  proportionOfDistanceCovered = 1;
             }
 
-            // 5. Calcular la hora programada (timestamp) en la posición actual del chófer
             const scheduledTimeAtCurrentPositionMillis = departureDateTime.getTime() + (proportionOfDistanceCovered * totalLegScheduledTimeMillis);
-
-            // 6. Obtener hora actual (timestamp)
             const currentTimeMillis = new Date().getTime();
-
-            // 7. Calcular diferencia en milisegundos y luego en minutos (decimal)
-            // La diferencia es: Hora Programada en Posición - Hora Actual
-            // Si es positivo, el chófer llegó ANTES de lo programado (adelantado).
-            // Si es negativo, el chófer llegó DESPUÉS de lo programado (atrasado).
             const diffInMillis = scheduledTimeAtCurrentPositionMillis - currentTimeMillis;
             const diffInTotalMinutes = diffInMillis / (1000 * 60);
             
-            // 8. Formatear y mostrar
             document.getElementById('time-difference-display').textContent = formatMinutesToTimeDiff(diffInTotalMinutes);
             const displayElement = document.getElementById('time-difference-display');
             
-            // Usar un pequeño umbral (ej. 0.1 minutos = 6 segundos) para considerar "a tiempo"
-            if (diffInTotalMinutes < -0.1) { // Atrasado 
+            if (diffInTotalMinutes < -0.1) { 
                 displayElement.className = 'late';
-            } else if (diffInTotalMinutes > 0.1) { // Adelantado
+            } else if (diffInTotalMinutes > 0.1) { 
                 displayElement.className = 'early';
             } else {
                 displayElement.className = 'on-time';
             }
 
-            // Comprobar proximidad para avance automático
             const distanceToNextStopTarget = currentPositionLatLng.distanceTo(coordB);
             if (!document.getElementById('manual-mode-checkbox').checked && distanceToNextStopTarget < PROXIMITY_THRESHOLD_METERS) {
-                // Asegurarse de que no está ya en la última parada de la última ruta antes de avanzar.
                 const isLastStopOfLastRoute = (currentTrackingRouteIndex === trackingQueue.length - 1) &&
                                               (toStopIndex === currentRoute.stops.length - 1);
                 if (!isLastStopOfLastRoute) {
                     advanceToNextLogicalStop();
                 } else if (distanceToNextStopTarget < PROXIMITY_THRESHOLD_METERS / 2) { 
-                    // Si está muy cerca de la última parada de todo, podría marcar como FIN
-                    // Esto es para evitar que se quede en la última parada sin mensaje de FIN si no avanza.
                     document.getElementById('time-difference-display').textContent = "FIN";
                     document.getElementById('time-difference-display').className = "";
-                    // Considerar detener el seguimiento aquí si se desea.
                 }
             }
         }
-
 
         function timeToMinutes(timeInput) { 
             let hours, minutes;
@@ -943,22 +1034,18 @@
         
         function formatMinutesToTimeDiff(totalMinutesWithFraction) {
             const sign = totalMinutesWithFraction < 0 ? "-" : "+";
-            // Para el redondeo: queremos que -0.001 sea -00:00, no +00:00
-            // Y +0.001 sea +00:00
-            // Math.abs para el cálculo de mm y ss
             const absTotalMinutes = Math.abs(totalMinutesWithFraction);
-            const mm = Math.floor(absTotalMinutes);
-            const ss = Math.round((absTotalMinutes - mm) * 60); 
+            let mm = Math.floor(absTotalMinutes);
+            let ss = Math.round((absTotalMinutes - mm) * 60); 
 
-            // Corrección para que 60 segundos se muestren como 01:00
             if (ss === 60) {
-                return `${sign}${String(mm + 1).padStart(2, '0')}:00`;
+                mm += 1;
+                ss = 0;
             }
             return `${sign}${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
         }
         
         function bindEventListeners() {
-            // ... (bindings existentes se mantienen, el de 'delete-selected-route-btn' ya está arriba) ...
             document.getElementById('cancel-stop-btn').addEventListener('click', closeStopModal);
         }
 
