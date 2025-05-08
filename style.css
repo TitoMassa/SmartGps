@@ -1,0 +1,173 @@
+:root {
+    --primary-color: #007bff;
+    --secondary-color: #6c757d;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --light-color: #f8f9fa;
+    --dark-color: #343a40;
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: Arial, sans-serif;
+    background-color: var(--light-color);
+    color: var(--dark-color);
+    display: flex;
+    flex-direction: column;
+}
+
+#app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden; /* Para evitar scroll en el body */
+}
+
+#map {
+    width: 100%;
+    height: 40vh; /* Mapa ocupa parte superior */
+    border-bottom: 2px solid var(--primary-color);
+}
+
+#controls-panel {
+    padding: 10px;
+    overflow-y: auto; /* Scroll solo para controles si es necesario */
+    flex-grow: 1;
+    background-color: #fff;
+}
+
+.control-group {
+    margin-bottom: 15px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: var(--light-color);
+}
+
+.control-group h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+button, input[type="text"], input[type="time"], select {
+    padding: 8px 12px;
+    margin: 5px 0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em;
+    box-sizing: border-box;
+    width: calc(100% - 24px); /* Ajuste por padding */
+}
+
+input[type="checkbox"] {
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+button {
+    background-color: var(--primary-color);
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+button.danger { background-color: var(--danger-color); }
+button.danger:hover { background-color: #c82333; }
+button.success { background-color: var(--success-color); }
+button.success:hover { background-color: #218838; }
+button.secondary { background-color: var(--secondary-color); }
+button.secondary:hover { background-color: #545b62; }
+
+
+#time-difference-display {
+    font-size: 2.5em;
+    font-weight: bold;
+    text-align: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    background-color: var(--dark-color);
+    color: white;
+}
+
+#time-difference-display.on-time { color: white; /* O un color neutral */ }
+#time-difference-display.late { color: var(--danger-color); }
+#time-difference-display.early { color: var(--success-color); }
+
+
+#stops-list-container ol {
+    list-style-type: none;
+    padding: 0;
+}
+
+#stops-list-container li {
+    background-color: #fff;
+    border: 1px solid #eee;
+    padding: 8px;
+    margin-bottom: 5px;
+    border-radius: 3px;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.9em;
+}
+#stops-list-container li .stop-info {
+    margin-bottom: 5px;
+}
+#stops-list-container li .stop-actions button {
+    padding: 4px 8px;
+    font-size: 0.8em;
+    margin-right: 5px;
+    width: auto;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.6);
+}
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+    max-width: 400px;
+    border-radius: 8px;
+}
+.modal-content h4 { margin-top: 0; }
+
+/* Iconos personalizados */
+.current-location-icon {
+    background-color: blue;
+    border: 2px solid white;
+    border-radius: 50%;
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+}
+.stop-marker-icon-content {
+    background-color: red;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    border: 1px solid white;
+}
