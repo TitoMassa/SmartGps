@@ -1,98 +1,215 @@
-/* smart-move-pro/css/style.css */
 body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #f4f4f4;
+    color: #333;
+    line-height: 1.6;
 }
 
-#map {
-  flex: 1 0 60vh;
-  height: 60vh;
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh; /* Ensure container takes at least full height */
 }
 
-.controls {
-  flex: 1;
-  padding: 1rem;
-  overflow-y: auto;
-  background: #f8f9fa;
+h1, h2, h3 {
+    color: #303F9F;
+    text-align: center;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
-.section {
-  margin-bottom: 1.5rem;
+.map {
+    height: 300px; /* Fixed height for the map */
+    width: 100%;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    flex-shrink: 0; /* Prevent map from shrinking */
 }
 
-.section h2 {
-  font-size: 1.2rem;
-  margin-bottom: 0.5rem;
+.controls-panel {
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    flex-grow: 1; /* Allow controls to fill remaining space */
+    overflow-y: auto; /* Enable vertical scrolling */
 }
 
-.route-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+.form-section {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px dashed #eee;
 }
 
-button, select, input {
-  width: 100%;
-  padding: 0.5rem;
-  margin: 0.2rem 0;
-  font-size: 1rem;
+.form-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
 }
 
-.stop-list {
-  list-style: none;
-  padding: 0;
+button, input[type="text"], input[type="time"], select {
+    padding: 8px;
+    margin: 5px 2px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em;
+    vertical-align: middle;
 }
 
-.stop-item {
-  padding: 0.5rem;
-  background: #fff;
-  border: 1px solid #ddd;
-  margin-bottom: 0.3rem;
-  border-radius: 4px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+button {
+    background-color: #5C6BC0;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
 }
 
-.stop-item span {
-  flex: 1;
+button:hover:not(:disabled) {
+    background-color: #3F51B5;
 }
 
-.stop-actions button {
-  margin-left: 0.5rem;
-  padding: 0.3rem 0.5rem;
+button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
 }
 
-.map-legend {
-  display: flex;
-  justify-content: center;
-  margin-top: 1rem;
-  gap: 1rem;
+input[type="text"], input[type="time"], select {
+    display: inline-block; /* Change to inline-block */
+    width: auto; /* Allow width to be determined by content/flex */
+    max-width: calc(100% - 10px); /* Prevent overflow */
 }
 
-.legend-item {
-  display: flex;
-  align-items: center;
+#route-creation-controls input[type="text"],
+#start-end-details input[type="text"],
+#start-end-details input[type="time"],
+#intermediate-stop-placeholder input[type="text"],
+#intermediate-stop-placeholder input[type="time"] {
+    width: auto; /* Allow width to adjust */
+    margin-right: 5px;
 }
 
-.legend-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  margin-right: 0.5rem;
+#route-creation-controls input[type="text"] {
+     width: calc(100% - 10px);
+     display: block;
+     margin-bottom: 10px;
 }
 
-.legend-icon.start { background: green; }
-.legend-icon.end { background: red; }
-.legend-icon.intermediate { background: blue; }
-.legend-icon.current { background: yellow; border: 2px solid black; }
+#start-point-info, #end-point-info, #intermediate-stop-placeholder {
+    background-color: #e8eaf6;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
 
-@media (max-width: 600px) {
-  .route-controls {
-    grid-template-columns: 1fr;
-  }
+#start-point-info span, #end-point-info span, #intermediate-stop-placeholder span {
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+#stop-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 10px;
+}
+
+#stop-list li {
+    background-color: #f5f5f5;
+    padding: 8px;
+    margin-bottom: 5px;
+    border-radius: 4px;
+    border: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#stop-list li button {
+    padding: 3px 8px;
+    font-size: 0.9em;
+    background-color: #e57373;
+}
+
+#stop-list li button:hover:not(:disabled) {
+     background-color: #ef5350;
+}
+
+#tracking-queue-list {
+    list-style: disc;
+    padding-left: 20px;
+}
+
+#tracking-queue-list li {
+    margin-bottom: 5px;
+}
+
+#tracking-info {
+    background-color: #e8f5e9;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #c8e6c9;
+}
+
+#tracking-info p {
+    margin: 5px 0;
+}
+
+#time-difference {
+    color: #d32f2f; /* Red for delay */
+}
+
+#time-difference::before {
+     content: "+";
+}
+#time-difference[data-delay="-"]::before {
+     content: "-";
+}
+#time-difference[data-delay="0"] {
+     color: #388e3c; /* Green for on time */
+}
+#time-difference[data-delay="0"]::before {
+     content: "+"; /* Still show +00:00 */
+}
+
+
+#manual-control-buttons button {
+    margin-top: 5px;
+    width: 48%; /* Make buttons share width */
+}
+
+/* Leaflet custom icon styling */
+.leaflet-marker-icon {
+    background-color: transparent;
+    border: none;
+}
+
+.leaflet-div-icon {
+    background-color: #303F9F;
+    color: white;
+    border-radius: 50%;
+    width: 20px !important;
+    height: 20px !important;
+    line-height: 20px !important;
+    text-align: center;
+    font-weight: bold;
+    font-size: 0.8em;
+    border: 1px solid #fff;
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+}
+
+.leaflet-div-icon.start-icon { background-color: #4CAF50; } /* Green for Start */
+.leaflet-div-icon.end-icon { background-color: #F44336; } /* Red for End */
+.leaflet-div-icon.bus-icon { background-color: #FFEB3B; color: #333; } /* Yellow for Bus */
+
+
+/* Responsive adjustments */
+@media (min-width: 600px) {
+    .container {
+        padding: 20px;
+    }
+    .map {
+        height: 400px; /* Larger map on wider screens */
+    }
 }
