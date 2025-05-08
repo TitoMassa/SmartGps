@@ -1,89 +1,122 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Move Pro</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="../leaflet/leaflet.css">
-  <meta name="theme-color" content="#4A90E2">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Move Pro</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha200-ZcdApe3+MLantagesFXwZaIGRqueldySzOk+CzzSGE9GB+Cg=="
+          crossorigin=""/>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#303F9F">
 </head>
 <body>
-  <div id="map"></div>
-  
-  <div class="controls">
-    <div class="section">
-      <h2>Ruta</h2>
-      <input type="text" id="route-name" placeholder="Nombre de la ruta">
-      <div class="route-controls">
-        <button id="start-point">Punto de Inicio</button>
-        <button id="end-point">Punto Final</button>
-        <button id="add-stop">Añadir Parada</button>
-        <label>
-          <input type="checkbox" id="auto-schedule">
-          Calcular horarios automáticamente
-        </label>
-      </div>
-      <ul class="stop-list" id="stop-list"></ul>
+
+    <div class="container">
+        <h1>Smart Move Pro (Chofer)</h1>
+
+        <div id="map" class="map"></div>
+
+        <div class="controls-panel">
+
+            <h2>Gestión de Rutas</h2>
+            <div class="form-section">
+                <h3>Crear/Editar Ruta</h3>
+                <div id="route-creation-controls">
+                    <input type="text" id="route-name" placeholder="Nombre de la Ruta">
+                    <button id="set-start-point-btn">1. Set Inicio</button>
+                    <button id="set-end-point-btn" disabled>2. Set Fin</button>
+                    <button id="add-intermediate-point-btn" disabled>+ Parada Intermedia</button>
+                    <button id="clear-map-btn">Limpiar Mapa</button>
+                    <div id="start-end-details" style="margin-top: 10px;">
+                        <div id="start-point-info" style="display: none;">
+                            Inicio: <span id="start-point-coords"></span>
+                            Nombre: <input type="text" id="start-point-name" placeholder="Nombre Inicio">
+                            Hora Salida: <input type="time" id="start-point-time">
+                        </div>
+                         <div id="end-point-info" style="display: none;">
+                            Fin: <span id="end-point-coords"></span>
+                            Nombre: <input type="text" id="end-point-name" placeholder="Nombre Fin">
+                            Hora Llegada: <input type="time" id="end-point-time">
+                        </div>
+                    </div>
+                     <div id="intermediate-stop-placeholder" style="margin-top: 10px; display: none;">
+                         Nueva Parada Intermedia: <span id="new-intermediate-coords"></span>
+                         Nombre: <input type="text" id="new-intermediate-name" placeholder="Nombre opcional">
+                         Hora Llegada: <input type="time" id="new-intermediate-time">
+                         <button id="add-new-intermediate-btn">Añadir Parada</button>
+                    </div>
+                    <div style="margin-top: 10px;">
+                         <input type="checkbox" id="auto-calculate-times">
+                         <label for="auto-calculate-times">Calcular horarios intermedios automáticamente</label>
+                    </div>
+                </div>
+
+                <h3>Lista de Paradas</h3>
+                <ul id="stop-list">
+                    <!-- Stop list will be populated here -->
+                </ul>
+
+                <button id="save-route-btn">Guardar Ruta</button>
+            </div>
+
+            <div class="form-section">
+                <h3>Cargar/Eliminar Ruta</h3>
+                <select id="saved-routes-dropdown">
+                    <option value="">-- Seleccionar Ruta --</option>
+                    <!-- Saved routes will be populated here -->
+                </select>
+                <button id="load-route-btn" disabled>Cargar</button>
+                <button id="delete-route-btn" disabled>Eliminar</button>
+            </div>
+
+            <div class="form-section">
+                 <h3>Cola de Seguimiento</h3>
+                 <button id="add-to-queue-btn" disabled>Añadir Ruta Seleccionada a Cola</button>
+                 <ul id="tracking-queue-list">
+                     <!-- Tracking queue will be populated here -->
+                 </ul>
+                 <button id="clear-queue-btn">Limpiar Cola</button>
+            </div>
+
+            <div class="form-section">
+                <h2>Seguimiento en Tiempo Real</h2>
+                <button id="start-tracking-btn" disabled>Iniciar Seguimiento</button>
+                <button id="stop-tracking-btn" disabled>Detener Seguimiento</button>
+
+                <div id="tracking-info" style="margin-top: 15px; display: none;">
+                    <p>Ruta Activa: <strong id="tracking-route-name">-</strong></p>
+                    <p>Próxima Parada: <strong id="next-stop-info">-</strong></p>
+                    <p>Diferencia de Tiempo: <strong id="time-difference" style="font-size: 1.2em;">+/-00:00</strong></p>
+                    <p>Ubicación Actual: <span id="current-location">-</span></p>
+                </div>
+
+                 <div style="margin-top: 10px;">
+                     <input type="checkbox" id="manual-control">
+                     <label for="manual-control">Control Manual Parada/Ruta</label>
+                 </div>
+                 <div id="manual-control-buttons" style="display: none;">
+                      <button id="prev-stop-btn" disabled>< Parada Anterior</button>
+                      <button id="next-stop-btn" disabled>Parada Siguiente ></button>
+                 </div>
+            </div>
+        </div>
     </div>
 
-    <div class="section">
-      <h2>Gestión de Rutas</h2>
-      <select id="route-list"></select>
-      <div class="route-controls">
-        <button id="save-route">Guardar Ruta</button>
-        <button id="load-route">Cargar Ruta</button>
-        <button id="delete-route">Eliminar Ruta</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Cola de Seguimiento</h2>
-      <select id="queue-list"></select>
-      <div class="route-controls">
-        <button id="add-to-queue">Añadir a Cola</button>
-        <button id="clear-queue">Limpiar Cola</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Seguimiento en Tiempo Real</h2>
-      <label>
-        <input type="checkbox" id="manual-control">
-        Control Manual Parada/Ruta
-      </label>
-      <div class="route-controls">
-        <button id="prev-stop" disabled>Parada Anterior</button>
-        <button id="next-stop" disabled>Parada Siguiente</button>
-      </div>
-      <div class="route-controls">
-        <button id="start-tracking">Iniciar Seguimiento</button>
-        <button id="stop-tracking">Detener Seguimiento</button>
-      </div>
-    </div>
-
-    <div class="map-legend">
-      <div class="legend-item">
-        <div class="legend-icon start"></div>
-        <span>Inicio</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-icon intermediate"></div>
-        <span>Intermedia</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-icon end"></div>
-        <span>Fin</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-icon current"></div>
-        <span>Posición Actual</span>
-      </div>
-    </div>
-  </div>
-
-  <script src="../leaflet/leaflet.js"></script>
-  <script src="js/app.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha200-aj8yIGifwzWzQARxQyS4LL+kRTWDR50CAuCSzRqFgDY/XqS9wsHkNyK5erw4CZZW"
+            crossorigin=""></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('Service Worker Registered:', reg))
+                    .catch(err => console.error('Service Worker Registration Failed:', err));
+            });
+        }
+    </script>
 </body>
 </html>
