@@ -11,34 +11,33 @@
 body, html {
     margin: 0;
     padding: 0;
-    height: 100%; /* Importante para que #app-container pueda usar % de altura */
+    height: 100%;
     font-family: Arial, sans-serif;
     background-color: var(--light-color);
     color: var(--dark-color);
-    display: flex; /* Para que el app-container pueda crecer */
-    flex-direction: column; /* El body en sí no necesita ser flex si app-container es el principal */
+    display: flex;
+    flex-direction: column;
 }
 
 #app-container {
     display: flex;
     flex-direction: column;
-    height: 100%; /* Ocupa toda la altura disponible del body */
-    width: 100%;  /* Ocupa todo el ancho disponible */
-    overflow: hidden; /* Evitar scroll en el body si el contenido se desborda */
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
 }
 
 #map {
     width: 100%;
-    height: 40vh; /* Altura del mapa (40% de la altura de la ventana) */
-    /* O puedes usar una altura fija: height: 300px; */
+    height: 40vh;
     border-bottom: 2px solid var(--primary-color);
-    background-color: #e0e0e0; /* Color de fondo mientras carga, para ver el espacio */
+    background-color: #e0e0e0;
 }
 
 #controls-panel {
     padding: 10px;
-    overflow-y: auto; /* Scroll solo para controles si es necesario */
-    flex-grow: 1; /* Permite que este panel ocupe el espacio restante */
+    overflow-y: auto;
+    flex-grow: 1;
     background-color: #fff;
 }
 
@@ -50,13 +49,19 @@ body, html {
     background-color: var(--light-color);
 }
 
-.control-group h3 {
+.control-group h3, .control-group h4 {
     margin-top: 0;
     color: var(--primary-color);
     font-size: 1.1em;
     border-bottom: 1px solid #eee;
     padding-bottom: 5px;
+    margin-bottom: 10px;
 }
+.control-group h4 {
+    font-size: 1em;
+    color: var(--secondary-color);
+}
+
 
 button, input[type="text"], input[type="time"], select {
     padding: 8px 12px;
@@ -65,7 +70,7 @@ button, input[type="text"], input[type="time"], select {
     border-radius: 4px;
     font-size: 1em;
     box-sizing: border-box;
-    width: calc(100% - 24px); 
+    width: calc(100% - 24px);
 }
 
 input[type="checkbox"] {
@@ -90,6 +95,40 @@ button.success { background-color: var(--success-color); }
 button.success:hover { background-color: #218838; }
 button.secondary { background-color: var(--secondary-color); }
 button.secondary:hover { background-color: #545b62; }
+button.link-button {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.9em;
+    margin: 0 0 0 5px; /* Ajustar margen según sea necesario */
+    width: auto; /* Permitir que el botón se ajuste al texto */
+}
+button.link-button:hover {
+    color: #0056b3;
+}
+
+#route-creation-steps .point-info-box {
+    background-color: #eef;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    border: 1px solid #ccf;
+}
+#route-creation-steps .point-info-box p {
+    margin: 0 0 5px 0;
+    font-size: 0.95em;
+}
+#route-creation-steps .point-info-box small {
+    font-size: 0.8em;
+    color: #555;
+}
+#route-creation-steps input[type="time"] {
+    width: auto; /* Ajustar ancho para inputs de tiempo */
+    padding: 6px 8px;
+}
 
 
 #time-difference-display {
@@ -146,16 +185,15 @@ button.secondary:hover { background-color: #545b62; }
 }
 .modal-content {
     background-color: #fefefe;
-    margin: 10% auto; /* Reducir margen superior para móviles */
+    margin: 10% auto;
     padding: 20px;
     border: 1px solid #888;
-    width: 90%; /* Hacerlo un poco más ancho en móviles */
+    width: 90%;
     max-width: 400px;
     border-radius: 8px;
 }
 .modal-content h4 { margin-top: 0; }
 
-/* Iconos personalizados Leaflet (si los tienes, si no, usar los default de Leaflet) */
 .current-location-icon {
     background-color: blue;
     border: 2px solid white;
@@ -174,11 +212,27 @@ button.secondary:hover { background-color: #545b62; }
     font-weight: bold;
     border: 1px solid white;
 }
+.start-marker-icon-content, .end-marker-icon-content {
+    background-color: green; /* Diferenciar inicio/fin */
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    font-size: 0.8em;
+    border: 1px solid white;
+}
+.end-marker-icon-content {
+    background-color: purple; /* Diferenciar fin */
+}
 
-/* Estilo para que Leaflet no muestre el zoom 'fractional' que a veces causa problemas visuales */
+
 .leaflet-map-pane img {
     max-width: none !important;
 }
 .leaflet-tile {
-    image-rendering: -webkit-optimize-contrast; /* Para mejorar la nitidez de los tiles en algunos navegadores */
+    image-rendering: -webkit-optimize-contrast;
 }
