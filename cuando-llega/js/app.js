@@ -5,45 +5,98 @@ document.addEventListener('DOMContentLoaded', () => {
     const busStatusNote = document.getElementById('bus-status-note');
     const lastDataUpdateDisplay = document.getElementById('last-data-update');
 
-    let allRoutesData = []; // Para almacenar las rutas del chofer
+    let allRoutesDataFromStorage = []; // Para almacenar las rutas completas (estructura de edición)
     let passengerUpdateInterval;
 
-    function loadRoutesForPassenger() {
+    function getTrackingStatus() {
+        const trackingStatusJSON = localStorage.getItem('smartMoveProTrackingStatus');
+        if (trackingStatusJSON) {
+            try {
+                return JSON.parse(trackingStatusJSON);
+            } catch (e) {
+                console.error("CuandoLlega: Error parsing trackingStatus from localStorage", e);
+                return null;
+            }
+        }
+        return null;
+    }
+    
+    function loadAllRoutesFromStorage() {
         const routesJSON = localStorage.getItem('smartMoveProRoutes');
         if (routesJSON) {
-            allRoutesData = JSON.parse(routesJSON);
-            routeSelect.innerHTML = '<option value="">-- Elige una ruta --</option>'; // Reset
-            allRoutesData.forEach((route, index) => {
+            try {
+                allRoutesDataFromStorage = JSON.parse(routesJSON);
+                return true;
+            } catch (e) {
+                console.error("CuandoLlega: Error parsing allRoutesDataFromStorage from localStorage", e);
+                allRoutesDataFromStorage = [];
+                return false;
+            }
+        }
+        allRoutesDataFromStorage = [];
+        return false;
+    }
+
+    function populateRouteSelect() {
+        if (!loadAllRoutesFromStorage()) { // Cargar las rutas base
+            arrivalTimeDisplay.textContent = "No hay rutas de chofer disponibles.";
+            console.warn("CuandoLlega: No se encontraron rutas en localStorage ('smartMoveProRoutes').");
+            return;
+        }
+
+        routeSelect.innerHTML = '<option value="">-- Elige una ruta --</option>';
+        allRoutesDataFromStorage.forEach((route) => { // Iterar sobre la estructura de edición
+            if (route.name && route.startPoint && route.endPoint) { // Asegurar que la ruta sea mínimamente válida
                 const option = document.createElement('option');
-                option.value = index; // Usar índice para referenciar en allRoutesData
+                option.value = route.name; // Usar el nombre de la ruta como valor
                 option.textContent = route.name;
                 routeSelect.appendChild(option);
-            });
-        } else {
-            arrivalTimeDisplay.textContent = "No hay rutas de chofer disponibles.";
-            console.warn("No se encontraron rutas en localStorage ('smartMoveProRoutes').");
-        }
+            }
+        });
     }
 
     routeSelect.addEventListener('change', () => {
-        const selectedRouteIndex = routeSelect.value;
-        stopSelect.innerHTML = '<option value="">-- Elige una parada --</option>'; // Reset
+        const selectedRouteName = routeSelect.value;
+        stopSelect.innerHTML = '<option value="">-- Elige una parada --</option>';
         stopSelect.disabled = true;
         arrivalTimeDisplay.textContent = "Selecciona una parada.";
         busStatusNote.textContent = "";
 
+        if (selectedRouteName) {
+            const trackingStatus = getTrackingStatus();
+            let stopsToDisplay = [];
 
-        if (selectedRouteIndex !== "" && allRoutesData[selectedRouteIndex]) {
-            const selectedRoute = allRoutesData[selectedRouteIndex];
-            selectedRoute.stops.forEach((stop, stopIndex) => {
-                const option = document.createElement('option');
-                option.value = stopIndex;
-                option.textContent = `Parada ${stopIndex + 1}`; // Podrías añadir más info si la tuvieras (ej. nombre de la parada)
-                stopSelect.appendChild(option);
-            });
-            stopSelect.disabled = false;
+            // Caso 1: Chofer online y en la ruta seleccionada por el pasajero
+            if (trackingStatus && trackingStatus.isTracking && trackingStatus.routeName === selectedRouteName && trackingStatus.routeStops) {
+                stopsToDisplay = trackingStatus.routeStops;
+            } 
+            // Caso 2: Chofer offline o en otra ruta, o datos de tracking incompletos
+            else {
+                const routeFromStorage = allRoutesDataFromStorage.find(r => r.name === selectedRouteName);
+                if (routeFromStorage) {
+                    if (routeFromStorage.startPoint) stopsToDisplay.push(routeFromStorage.startPoint);
+                    stopsToDisplay = stopsToDisplay.concat(routeFromStorage.intermediateStops || []);
+                    if (routeFromStorage.endPoint) stopsToDisplay.push(routeFromStorage.endPoint);
+                }
+            }
+
+            if (stopsToDisplay.length > 0) {
+                stopsToDisplay.forEach((stop, index) => {
+                    const option = document.createElement('option');
+                    option.value = index; // Índice en el array `stopsToDisplay`
+                    let displayName = stop.name || `Parada ${index + 1}`;
+                    if (stop.type === 'start') displayName = `${stop.name || 'Inicio'} (Inicio)`;
+                    else if (stop.type === 'end') displayName = `${stop.name || 'Fin'} (Fin)`;
+                    else if (stop.name) displayName = stop.name; // Nombre personalizado de parada intermedia
+                    // else displayName sigue siendo Parada X+1
+
+                    option.textContent = displayName;
+                    stopSelect.appendChild(option);
+                });
+                stopSelect.disabled = false;
+            }
         }
-        updateArrivalTime(); // Actualizar inmediatamente si ya hay una parada seleccionada (poco probable aquí)
+        updateArrivalTime(); // Llamar para actualizar la info de llegada
     });
 
     stopSelect.addEventListener('change', () => {
@@ -51,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function timeStringToDate(timeString, baseDate = new Date()) {
+        if (!timeString || !timeString.includes(':')) return null; // Manejar tiempo inválido
         const [hours, minutes] = timeString.split(':').map(Number);
         const newDate = new Date(baseDate);
         newDate.setHours(hours, minutes, 0, 0);
@@ -58,160 +112,182 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function formatRemainingTime(milliseconds) {
-        if (milliseconds < 0) milliseconds = 0; // No mostrar tiempo negativo
+        if (milliseconds < 0) milliseconds = 0;
 
-        const totalSeconds = Math.floor(milliseconds / 1000);
+        const totalSeconds = Math.round(milliseconds / 1000); // Redondear segundos
         const minutes = Math.floor(totalSeconds / 60);
 
-        if (minutes === 0 && totalSeconds < 60 && totalSeconds > 0) { // Entre 1 y 59 segundos
+        if (minutes === 0 && totalSeconds > 0 && totalSeconds < 60) {
             return "ARRIBANDO";
         }
-        if (minutes < 1 && totalSeconds === 0) { // Exactamente 0 o ya pasó y se redondeó a 0
-            return "ARRIBANDO"; // O "Llegó" si prefieres
+        if (minutes < 1 && totalSeconds <= 0) { // Si es 0 o negativo, también ARRIBANDO
+            return "ARRIBANDO";
         }
         return `${minutes} min.`;
     }
 
-
     function updateArrivalTime() {
-        const selectedRouteIndex = routeSelect.value;
-        const selectedStopIndex = stopSelect.value;
+        const selectedRouteName = routeSelect.value;
+        const selectedStopIndexInDisplay = stopSelect.value; // Este es el índice de la opción en el select
 
-        if (selectedRouteIndex === "" || selectedStopIndex === "") {
+        if (selectedRouteName === "" || selectedStopIndexInDisplay === "") {
             arrivalTimeDisplay.textContent = "Selecciona una ruta y parada.";
             busStatusNote.textContent = "";
             return;
         }
+        
+        const passengerSelectedStopListIndex = parseInt(selectedStopIndexInDisplay);
+        const trackingStatus = getTrackingStatus();
 
-        const passengerSelectedRoute = allRoutesData[parseInt(selectedRouteIndex)];
-        const passengerSelectedStop = passengerSelectedRoute.stops[parseInt(selectedStopIndex)];
-
-        const trackingStatusJSON = localStorage.getItem('smartMoveProTrackingStatus');
-        let trackingStatus = null;
-        if (trackingStatusJSON) {
-            trackingStatus = JSON.parse(trackingStatusJSON);
-             lastDataUpdateDisplay.textContent = trackingStatus.lastUpdateTime ? new Date(trackingStatus.lastUpdateTime).toLocaleTimeString() : 'Desconocida';
+        if (trackingStatus && trackingStatus.lastUpdateTime) {
+            lastDataUpdateDisplay.textContent = new Date(trackingStatus.lastUpdateTime).toLocaleTimeString();
+        } else {
+            lastDataUpdateDisplay.textContent = 'Desconocida';
         }
+        
+        // Escenario 1: Chofer fuera de línea o datos de seguimiento inválidos o error del chofer
+        if (!trackingStatus || !trackingStatus.isTracking || trackingStatus.hasError) {
+            busStatusNote.textContent = trackingStatus?.hasError ? "Error en datos del chofer." : "El chofer está fuera de línea. Se muestra horario programado.";
+            
+            const routeFromStorage = allRoutesDataFromStorage.find(r => r.name === selectedRouteName);
+            if (routeFromStorage) {
+                let stopsForOffline = [];
+                if(routeFromStorage.startPoint) stopsForOffline.push(routeFromStorage.startPoint);
+                stopsForOffline = stopsForOffline.concat(routeFromStorage.intermediateStops || []);
+                if(routeFromStorage.endPoint) stopsForOffline.push(routeFromStorage.endPoint);
 
-
-        // Escenario 1: Chofer fuera de línea o sin datos de seguimiento
-        if (!trackingStatus || !trackingStatus.isTracking) {
-            arrivalTimeDisplay.textContent = `${passengerSelectedStop.departureTime} (hor prog.)`;
-            busStatusNote.textContent = "El chofer está fuera de línea o no ha iniciado seguimiento. Se muestra horario programado de SALIDA de la parada.";
+                const passengerSelectedStopData = stopsForOffline[passengerSelectedStopListIndex];
+                if (passengerSelectedStopData) {
+                    const timeToShow = (passengerSelectedStopData.type === 'start') ? 
+                                       passengerSelectedStopData.departureTime : 
+                                       passengerSelectedStopData.arrivalTime;
+                    arrivalTimeDisplay.textContent = `${timeToShow || '--:--'} (hor prog.)`;
+                } else {
+                    arrivalTimeDisplay.textContent = "Error datos parada (offline)";
+                }
+            } else {
+                arrivalTimeDisplay.textContent = "Ruta no encontrada (offline)";
+            }
             return;
         }
 
         // Escenario 2: Chofer en línea
         busStatusNote.textContent = "El chofer está en línea.";
 
-        // Verificar si el chofer está en la misma ruta que seleccionó el pasajero
-        if (trackingStatus.routeName !== passengerSelectedRoute.name) {
+        if (trackingStatus.routeName !== selectedRouteName) {
             arrivalTimeDisplay.textContent = "N/A";
-            busStatusNote.textContent = `El chofer está actualmente en la ruta "${trackingStatus.routeName}". No en la seleccionada.`;
+            busStatusNote.textContent = `El chofer está actualmente en la ruta "${trackingStatus.routeName}".`;
+            return;
+        }
+        
+        if (!trackingStatus.routeStops || trackingStatus.routeStops.length === 0) {
+            arrivalTimeDisplay.textContent = "Error: Ruta sin paradas.";
+            busStatusNote.textContent = "La ruta del chofer no tiene paradas definidas.";
             return;
         }
 
-        const busRoute = passengerSelectedRoute; // Es la misma ruta
-        const busCurrentStopIndexFrom = trackingStatus.currentStopIndexFromWhichDeparted; // Parada de la que partió el bus
-        const busNextStopIndexTo = trackingStatus.nextStopIndexTowardsWhichHeading; // Próxima parada del bus
-        const passengerSelectedStopActualIndex = parseInt(selectedStopIndex);
+        // A partir de aquí, usamos trackingStatus.routeStops
+        const busRouteStops = trackingStatus.routeStops;
+        const passengerSelectedStopDataOnline = busRouteStops[passengerSelectedStopListIndex]; // Datos de la parada que seleccionó el pasajero
 
-        // Verificar si el bus ya pasó la parada del pasajero
-        if (passengerSelectedStopActualIndex <= busCurrentStopIndexFrom) {
+        if (!passengerSelectedStopDataOnline) {
+            arrivalTimeDisplay.textContent = "Error: Parada no encontrada en ruta activa.";
+            return;
+        }
+
+        // El índice que nos importa de `trackingStatus` es `currentStopIndexFromWhichDeparted`
+        // y `nextStopIndexTowardsWhichHeading`
+        const busCurrentStopIndexFrom = trackingStatus.currentStopIndexFromWhichDeparted; // Parada (índice) de la que partió el bus
+        const busNextStopIndexTo = trackingStatus.nextStopIndexTowardsWhichHeading; // Próxima parada (índice) a la que va el bus
+
+        // Para comparar, necesitamos el índice "real" de la parada seleccionada por el pasajero en la ruta activa.
+        // El `passengerSelectedStopListIndex` YA ES el índice correcto dentro de `busRouteStops`.
+
+        if (passengerSelectedStopListIndex <= busCurrentStopIndexFrom) {
             arrivalTimeDisplay.textContent = "Bus ya pasó";
-            busStatusNote.textContent = `El bus ya partió de la parada ${busCurrentStopIndexFrom + 1} o una posterior.`;
+            busStatusNote.textContent = `El bus ya partió de o pasó esta parada.`;
             return;
         }
 
         // Calcular tiempo restante
-        let estimatedTimeMillis = 0;
-        let busPosition = trackingStatus.lastKnownPosition; // {lat, lng}
-                                                            // Esto no lo usamos porque no tenemos Leaflet aquí.
-                                                            // Usaremos los datos de tiempo y retraso del chofer.
+        let estimatedTotalMillisToPassengerStop = 0;
+        const currentTimeMillis = new Date().getTime();
 
-        // Hora de referencia para cálculos de tiempo del chofer
-        // El chofer partió de `busRoute.stops[busCurrentStopIndexFrom]`
-        // Se dirige a `busRoute.stops[busNextStopIndexTo]`
-
-        // 1. Calcular tiempo restante hasta la *próxima parada del bus* (busNextStopIndexTo)
-        if (busCurrentStopIndexFrom < 0 || busNextStopIndexTo >= busRoute.stops.length) {
+        // 1. Tiempo hasta la próxima parada INMEDIATA del bus (busNextStopIndexTo)
+        if (busCurrentStopIndexFrom < 0 || busNextStopIndexTo >= busRouteStops.length) {
              arrivalTimeDisplay.textContent = "Error datos del chofer";
              busStatusNote.textContent = "Datos inconsistentes sobre la posición del chofer.";
              return;
         }
-
-        const fromStopChofer = busRoute.stops[busCurrentStopIndexFrom];
-        const toStopChoferImmediateNext = busRoute.stops[busNextStopIndexTo];
-
-        let departureTimeFromChoferPrevStop = timeStringToDate(fromStopChofer.departureTime);
-        let arrivalTimeAtChoferImmediateNextStop = timeStringToDate(toStopChoferImmediateNext.arrivalTime);
-
-        if (arrivalTimeAtChoferImmediateNextStop.getTime() < departureTimeFromChoferPrevStop.getTime()) {
-            arrivalTimeAtChoferImmediateNextStop.setDate(arrivalTimeAtChoferImmediateNextStop.getDate() + 1);
-        }
-
-        // Tiempo programado restante para el bus hasta SU PRÓXIMA PARADA.
-        // Esto se puede calcular usando la proporción de distancia restante o, más simple,
-        // Hora de llegada prog. a su prox. parada - Hora actual (ya ajustada por el retraso/adelanto)
-        // Hora actual real del sistema:
-        const currentTimeMillis = new Date().getTime();
-
+        
         // Hora programada en la que el bus *debería* estar en su posición actual:
-        // currentTimeMillis + trackingStatus.currentBusDelayOrAheadMillis
-        // (Si está adelantado, delay > 0, así que progTime = realTime + delay)
-        // (Si está atrasado, delay < 0, así que progTime = realTime - abs(delay))
+        // Si chofer está adelantado, currentBusDelayOrAheadMillis es positivo.
+        // Si chofer está atrasado, currentBusDelayOrAheadMillis es negativo.
+        // scheduledTimeAtBusCurrentPosition = currentTimeMillis + currentBusDelayOrAheadMillis
         const scheduledTimeAtBusCurrentPosition = currentTimeMillis + trackingStatus.currentBusDelayOrAheadMillis;
 
-        // Tiempo programado restante para el bus hasta SU PRÓXIMA PARADA (toStopChoferImmediateNext)
-        let scheduledTimeRemainingForBusCurrentLegMillis = arrivalTimeAtChoferImmediateNextStop.getTime() - scheduledTimeAtBusCurrentPosition;
-        if (scheduledTimeRemainingForBusCurrentLegMillis < 0) scheduledTimeRemainingForBusCurrentLegMillis = 0; // Ya debería haber llegado
-
-        estimatedTimeMillis = scheduledTimeRemainingForBusCurrentLegMillis;
-
-
-        // 2. Si la parada del pasajero es posterior a la próxima parada del bus, sumar tiempos de tramos intermedios
-        if (passengerSelectedStopActualIndex > busNextStopIndexTo) {
-            for (let i = busNextStopIndexTo; i < passengerSelectedStopActualIndex; i++) {
-                const legFromStop = busRoute.stops[i];
-                const legToStop = busRoute.stops[i + 1];
-
-                let legDepartureTime = timeStringToDate(legFromStop.departureTime);
-                let legArrivalTime = timeStringToDate(legToStop.arrivalTime);
-
-                // Asumimos que el primer tramo (salida) se basa en el horario de la parada anterior
-                // o si es el primer tramo del bucle, en la llegada estimada a esa parada.
-                // Para simplificar, tomamos los tiempos programados entre paradas.
-                const baseDateForThisLeg = (i === busNextStopIndexTo) ? arrivalTimeAtChoferImmediateNextStop : timeStringToDate(busRoute.stops[i-1].arrivalTime);
-
-
-                legDepartureTime = timeStringToDate(legFromStop.departureTime, baseDateForThisLeg);
-                legArrivalTime = timeStringToDate(legToStop.arrivalTime, baseDateForThisLeg);
-
-
-                if (legArrivalTime.getTime() < legDepartureTime.getTime()) {
-                    legArrivalTime.setDate(legArrivalTime.getDate() + 1);
-                }
-                // Si es el primer tramo después de la parada actual del bus, y el bus está llegando tarde/temprano
-                // a su próxima parada, esa hora de llegada estimada debería ser la base para la salida del siguiente tramo.
-                // Esta parte es compleja sin simular todo el recorrido.
-                // Por ahora, sumaremos duraciones programadas de tramos.
-                estimatedTimeMillis += (legArrivalTime.getTime() - legDepartureTime.getTime());
-            }
+        // Hora de llegada programada a la próxima parada inmediata del bus
+        const arrivalTimeAtBusImmediateNextStopDate = timeStringToDate(busRouteStops[busNextStopIndexTo].arrivalTime);
+        if (!arrivalTimeAtBusImmediateNextStopDate) {
+            arrivalTimeDisplay.textContent = "Error horario parada bus"; return;
         }
         
-        arrivalTimeDisplay.textContent = formatRemainingTime(estimatedTimeMillis);
+        // Si la llegada programada es "anterior" al tiempo programado actual (ej. cruzó medianoche entre paradas)
+        // Esto es más complejo de ajustar solo con la hora, necesitaríamos la fecha completa del horario.
+        // Simplificación: si la hora de llegada es menor que la de salida del tramo anterior, sumar un día.
+        // Este ajuste debería hacerse al generar los `Date` objects.
+        // Asumimos que los tiempos en `busRouteStops` son HH:MM y necesitamos construir fechas.
+        
+        // Para manejar cruces de medianoche entre la posición actual del bus y su siguiente parada:
+        let arrivalTimeAtBusNextStopForCalc = new Date(scheduledTimeAtBusCurrentPosition); // Usar como base
+        const [arrH, arrM] = busRouteStops[busNextStopIndexTo].arrivalTime.split(':').map(Number);
+        arrivalTimeAtBusNextStopForCalc.setHours(arrH, arrM, 0, 0);
+        if (arrivalTimeAtBusNextStopForCalc.getTime() < scheduledTimeAtBusCurrentPosition && 
+            (scheduledTimeAtBusCurrentPosition - arrivalTimeAtBusNextStopForCalc.getTime() > 12 * 60 * 60 * 1000 )) { // Si la diferencia es muy grande, probablemente cruzó
+             arrivalTimeAtBusNextStopForCalc.setDate(arrivalTimeAtBusNextStopForCalc.getDate() + 1);
+        }
+
+
+        let timeToBusImmediateNextStopMillis = arrivalTimeAtBusNextStopForCalc.getTime() - scheduledTimeAtBusCurrentPosition;
+        if (timeToBusImmediateNextStopMillis < 0) timeToBusImmediateNextStopMillis = 0;
+        
+        estimatedTotalMillisToPassengerStop = timeToBusImmediateNextStopMillis;
+        
+        // 2. Si la parada del pasajero es posterior a la próxima parada del bus, sumar tiempos de tramos intermedios
+        //    Estos tramos se calculan con sus duraciones programadas.
+        for (let i = busNextStopIndexTo; i < passengerSelectedStopListIndex; i++) {
+            const legFromStopData = busRouteStops[i];
+            const legToStopData = busRouteStops[i + 1];
+
+            const legDepartureDate = timeStringToDate(legFromStopData.departureTime); // Usar departureTime de la parada anterior del tramo
+            const legArrivalDate = timeStringToDate(legToStopData.arrivalTime);
+
+            if (!legDepartureDate || !legArrivalDate) {
+                console.warn("CuandoLlega: Horario inválido en tramo intermedio", legFromStopData, legToStopData);
+                estimatedTotalMillisToPassengerStop += 3 * 60 * 1000; // Añadir un tiempo por defecto si hay error
+                continue;
+            }
+            
+            // Ajustar cruce de medianoche para la duración del tramo
+            let tempLegArrivalDate = new Date(legArrivalDate);
+            if (tempLegArrivalDate.getTime() < legDepartureDate.getTime()) {
+                tempLegArrivalDate.setDate(tempLegArrivalDate.getDate() + 1);
+            }
+            estimatedTotalMillisToPassengerStop += (tempLegArrivalDate.getTime() - legDepartureDate.getTime());
+        }
+        
+        arrivalTimeDisplay.textContent = formatRemainingTime(estimatedTotalMillisToPassengerStop);
     }
 
-
     // Carga inicial
-    loadRoutesForPassenger();
-    updateArrivalTime(); // Para el caso de que haya algo preseleccionado o para mostrar mensaje inicial
+    populateRouteSelect();
+    updateArrivalTime();
 
     // Actualizar periódicamente
     if (passengerUpdateInterval) clearInterval(passengerUpdateInterval);
     passengerUpdateInterval = setInterval(() => {
-        // No recargar rutas completas cada vez, solo el estado del bus y recalcular.
-        // loadRoutesForPassenger(); // Podría ser útil si el chofer añade/elimina rutas en caliente, pero es costoso.
+        // Solo necesitamos actualizar la hora de llegada, no repoblar selects a menos que las rutas cambien
+        // lo cual es menos frecuente. Podríamos tener un chequeo más ligero aquí.
         updateArrivalTime();
-    }, 15000); // Actualizar cada 15 segundos
+    }, 5000); // Actualizar cada 5 segundos para una respuesta más rápida al pasajero
 });
