@@ -114,9 +114,10 @@
             color: white;
         }
 
-        #time-difference-display.on-time { color: var(--success-color); }
+        #time-difference-display.on-time { color: white; /* O un color neutral */ }
         #time-difference-display.late { color: var(--danger-color); }
-        #time-difference-display.early { color: var(--warning-color); /* O un verde más claro */ }
+        #time-difference-display.early { color: var(--success-color); }
+
 
         #stops-list-container ol {
             list-style-type: none;
@@ -222,6 +223,7 @@
                 <h3>Cargar y Ejecutar Rutas</h3>
                 <select id="saved-routes-select"></select>
                 <button id="load-route-for-editing-btn">Cargar Ruta para Editar</button>
+                <button id="delete-selected-route-btn" class="danger">Eliminar Ruta Seleccionada</button>
                 <button id="add-to-tracking-queue-btn">Añadir Ruta Seleccionada a la Cola</button>
                 
                 <h4>Rutas en Cola para Seguimiento:</h4>
@@ -257,19 +259,18 @@
         let routePolyline;
         let stopMarkers = [];
         
-        let currentTempRoute = { name: "", stops: [] }; // Ruta que se está creando/editando
-        let allSavedRoutes = []; // Todas las rutas guardadas [{ name: "", stops: [...] }, ...]
-        let trackingQueue = []; // Rutas seleccionadas para el seguimiento en orden
+        let currentTempRoute = { name: "", stops: [] }; 
+        let allSavedRoutes = []; 
+        let trackingQueue = []; 
         
         let isTracking = false;
-        let currentTrackingRouteIndex = -1; // Índice de la ruta actual en trackingQueue
-        let currentTrackingStopIndex = -1;  // Índice de la parada *desde la que se partió* en la ruta actual
+        let currentTrackingRouteIndex = -1; 
+        let currentTrackingStopIndex = -1;  
         let trackingInterval;
         let lastKnownPosition = null;
 
-        const PROXIMITY_THRESHOLD_METERS = 50; // Metros para considerar llegada a parada
+        const PROXIMITY_THRESHOLD_METERS = 50; 
 
-        // Iconos Leaflet
         const currentLocationIcon = L.divIcon({
             className: 'current-location-icon',
             html: '',
@@ -286,7 +287,6 @@
             });
         }
 
-        // --- INICIALIZACIÓN ---
         document.addEventListener('DOMContentLoaded', () => {
             initMap();
             loadRoutesFromLocalStorage();
@@ -297,7 +297,7 @@
         });
 
         function initMap() {
-            map = L.map('map').setView([ -34.6037, -58.3816 ], 13); // Buenos Aires como default
+            map = L.map('map').setView([ -34.6037, -58.3816 ], 13); 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
@@ -318,7 +318,6 @@
             }
         }
 
-        // --- MANEJO DE POSICIÓN ---
         function updateCurrentPosition(position) {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
@@ -331,9 +330,11 @@
                 currentPositionMarker.setLatLng([lat, lng]);
             }
 
-            if (isTracking) {
-                // No necesitamos intervalo, el watchPosition ya actualiza
-                // calculateTimeDifference se llamará cuando sea necesario
+            // No es necesario llamar a calculateTimeDifference aquí si ya hay un intervalo.
+            // Se llamará con el intervalo o al cambiar de parada.
+            // Si no hay intervalo y estamos rastreando, podemos llamarlo:
+            if (isTracking && !trackingInterval) {
+                calculateTimeDifference();
             }
         }
 
@@ -342,7 +343,6 @@
             // Podrías mostrar un mensaje al usuario aquí
         }
         
-        // --- LÓGICA DE RUTAS Y PARADAS ---
         function onMapClick(e) {
             if (isTracking) {
                 alert("Detén el seguimiento para modificar la ruta.");
@@ -350,7 +350,7 @@
             }
             document.getElementById('stop-lat-input').value = e.latlng.lat;
             document.getElementById('stop-lng-input').value = e.latlng.lng;
-            document.getElementById('stop-index-input').value = ""; // Nueva parada
+            document.getElementById('stop-index-input').value = ""; 
             document.getElementById('modal-title').textContent = "Añadir Parada";
             document.getElementById('arrival-time-input').value = "";
             document.getElementById('departure-time-input').value = "";
@@ -376,16 +376,27 @@
                 alert("Por favor, ingresa hora de llegada y salida.");
                 return;
             }
-            if (timeToMinutes(departureTime) < timeToMinutes(arrivalTime)) {
-                alert("La hora de salida no puede ser anterior a la hora de llegada.");
-                return;
+            
+            // Validar que la hora de salida no sea anterior a la de llegada
+            // Convertir a minutos desde medianoche para comparar
+            const arrivalMinutes = timeToMinutes(arrivalTime);
+            const departureMinutes = timeToMinutes(departureTime);
+
+            // Si la hora de salida es menor que la de llegada, pero no cruza la medianoche de forma válida
+            // (ej. Llegada 14:00, Salida 13:00 es inválido)
+            // (ej. Llegada 23:00, Salida 01:00 es válido si la salida es del día siguiente, pero aquí son del mismo día conceptual de parada)
+            // Para una misma parada, la salida debe ser igual o posterior a la llegada.
+            if (departureMinutes < arrivalMinutes) {
+                 alert("La hora de salida de una parada no puede ser anterior a su hora de llegada.");
+                 return;
             }
+
 
             const stopData = { lat, lng, arrivalTime, departureTime };
 
-            if (stopIndex === "") { // Nueva parada
+            if (stopIndex === "") { 
                 currentTempRoute.stops.push(stopData);
-            } else { // Editando parada
+            } else { 
                 currentTempRoute.stops[parseInt(stopIndex)] = stopData;
             }
             renderCurrentStopsList();
@@ -400,7 +411,7 @@
             }
             const routeNameInput = document.getElementById('route-name-input');
             currentTempRoute = { name: routeNameInput.value || "Ruta Sin Nombre", stops: [] };
-            routeNameInput.value = ""; // Limpiar para la próxima
+            routeNameInput.value = ""; 
             renderCurrentStopsList();
             clearMapStopMarkersAndPolyline();
             alert("Nueva ruta iniciada. Añade paradas tocando el mapa o edita una existente.");
@@ -408,7 +419,7 @@
 
         function renderCurrentStopsList() {
             const listElement = document.getElementById('current-stops-list');
-            listElement.innerHTML = ''; // Limpiar lista
+            listElement.innerHTML = ''; 
             currentTempRoute.stops.forEach((stop, index) => {
                 const listItem = document.createElement('li');
                 listItem.innerHTML = `
@@ -477,7 +488,6 @@
 
             if (latLngs.length > 1) {
                 routePolyline = L.polyline(latLngs, {color: 'blue'}).addTo(map);
-                // map.fitBounds(routePolyline.getBounds()); // Opcional: ajustar zoom a la ruta
             }
         }
         
@@ -490,34 +500,36 @@
             }
         }
 
-        // --- GUARDAR Y CARGAR RUTAS ---
         document.getElementById('save-route-btn').addEventListener('click', () => {
             if (isTracking) {
                 alert("Detén el seguimiento para guardar la ruta.");
                 return;
             }
-            if (!currentTempRoute.name || currentTempRoute.stops.length < 2) {
-                alert("La ruta debe tener un nombre y al menos 2 paradas para ser guardada.");
-                // Si no tiene nombre, pero tiene paradas, podemos pedirlo
-                if(currentTempRoute.stops.length >= 2 && !currentTempRoute.name) {
-                    const newName = prompt("Ingresa un nombre para esta ruta:", "Ruta Guardada");
-                    if (!newName) return; // Usuario canceló
-                    currentTempRoute.name = newName;
-                } else if (currentTempRoute.stops.length < 2) {
-                    return;
-                }
+            if (!currentTempRoute.name && currentTempRoute.stops.length >= 2) {
+                const newName = prompt("Ingresa un nombre para esta ruta:", "Ruta Guardada");
+                if (!newName) return; 
+                currentTempRoute.name = newName;
+                document.getElementById('route-name-input').value = newName; // Actualizar en el input por si acaso
+            } else if (!currentTempRoute.name) {
+                 alert("Por favor, asigna un nombre a la ruta (en el campo 'Nombre de la Nueva Ruta').");
+                 return;
+            }
+
+
+            if (currentTempRoute.stops.length < 2) {
+                alert("La ruta debe tener al menos 2 paradas para ser guardada.");
+                return;
             }
             
-            // Verificar si ya existe una ruta con ese nombre para actualizarla
             const existingRouteIndex = allSavedRoutes.findIndex(r => r.name === currentTempRoute.name);
             if (existingRouteIndex > -1) {
                 if(confirm(`Ya existe una ruta llamada "${currentTempRoute.name}". ¿Deseas sobrescribirla?`)){
-                    allSavedRoutes[existingRouteIndex] = JSON.parse(JSON.stringify(currentTempRoute)); // Deep copy
+                    allSavedRoutes[existingRouteIndex] = JSON.parse(JSON.stringify(currentTempRoute)); 
                 } else {
-                    return; // No sobrescribir
+                    return; 
                 }
             } else {
-                allSavedRoutes.push(JSON.parse(JSON.stringify(currentTempRoute))); // Deep copy
+                allSavedRoutes.push(JSON.parse(JSON.stringify(currentTempRoute))); 
             }
             
             saveRoutesToLocalStorage();
@@ -557,13 +569,41 @@
                 alert("Por favor, selecciona una ruta para cargar.");
                 return;
             }
-            currentTempRoute = JSON.parse(JSON.stringify(allSavedRoutes[parseInt(selectedIndex)])); // Deep copy
+            currentTempRoute = JSON.parse(JSON.stringify(allSavedRoutes[parseInt(selectedIndex)])); 
             document.getElementById('route-name-input').value = currentTempRoute.name;
             renderCurrentStopsList();
             alert(`Ruta "${currentTempRoute.name}" cargada para edición.`);
         });
 
-        // --- GESTIÓN DE COLA DE SEGUIMIENTO ---
+        document.getElementById('delete-selected-route-btn').addEventListener('click', () => {
+            if (isTracking) {
+                alert("Detén el seguimiento para eliminar rutas.");
+                return;
+            }
+            const selectElement = document.getElementById('saved-routes-select');
+            const selectedIndex = selectElement.value;
+
+            if (selectedIndex === "") {
+                alert("Por favor, selecciona una ruta para eliminar.");
+                return;
+            }
+
+            const routeNameToDelete = allSavedRoutes[parseInt(selectedIndex)].name;
+            if (confirm(`¿Estás seguro de que deseas eliminar la ruta "${routeNameToDelete}"? Esta acción no se puede deshacer.`)) {
+                allSavedRoutes.splice(parseInt(selectedIndex), 1);
+                saveRoutesToLocalStorage();
+                populateSavedRoutesSelect();
+
+                // Si la ruta eliminada era la que estaba en currentTempRoute
+                if (currentTempRoute.name === routeNameToDelete) {
+                    document.getElementById('route-name-input').value = "";
+                    currentTempRoute = { name: "", stops: [] };
+                    renderCurrentStopsList(); // Limpia la lista de paradas
+                }
+                alert(`Ruta "${routeNameToDelete}" eliminada.`);
+            }
+        });
+
         document.getElementById('add-to-tracking-queue-btn').addEventListener('click', () => {
             const selectedIndex = document.getElementById('saved-routes-select').value;
             if (selectedIndex === "") {
@@ -590,7 +630,6 @@
             });
         }
 
-        // --- LÓGICA DE SEGUIMIENTO ---
         document.getElementById('start-tracking-btn').addEventListener('click', () => {
             if (isTracking) {
                 alert("El seguimiento ya está activo.");
@@ -607,23 +646,19 @@
 
             isTracking = true;
             currentTrackingRouteIndex = 0;
-            currentTrackingStopIndex = -1; // Significa que estamos por salir hacia la primera parada (índice 0)
-                                           // o acabamos de llegar a la parada -1 (inicio)
+            currentTrackingStopIndex = -1; 
             
             document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
             
-            clearMapStopMarkersAndPolyline(); // Limpiar marcadores de edición
-            drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops); // Dibujar la ruta activa
+            clearMapStopMarkersAndPolyline(); 
+            drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops); 
             
-            advanceToNextLogicalStop(); // Para configurar la primera parada y calcular tiempo
+            advanceToNextLogicalStop(); 
             updateTrackingButtonsState();
             updateManualControlsState();
             
-            // El cálculo de tiempo se hará continuamente por `watchPosition` y
-            // manualmente al cambiar de parada o ruta.
-            // Si se quiere un refresco periódico independiente del GPS:
             if (trackingInterval) clearInterval(trackingInterval);
-            trackingInterval = setInterval(calculateTimeDifference, 1000); // Refresca cada segundo
+            trackingInterval = setInterval(calculateTimeDifference, 1000); 
 
             alert("Seguimiento iniciado.");
         });
@@ -641,8 +676,6 @@
             document.getElementById('current-route-info').textContent = "Ninguna";
             updateTrackingButtonsState();
             updateManualControlsState();
-            // Opcional: volver a dibujar currentTempRoute si se estaba editando
-            // renderCurrentStopsList(); 
             alert("Seguimiento detenido.");
         });
         
@@ -650,7 +683,7 @@
             const startBtn = document.getElementById('start-tracking-btn');
             const stopBtn = document.getElementById('stop-tracking-btn');
             const routeMgmtControls = document.querySelectorAll('#controls-panel .control-group:nth-child(2) button, #controls-panel .control-group:nth-child(2) input');
-            const loadRouteControls = document.querySelectorAll('#load-route-for-editing-btn, #add-to-tracking-queue-btn, #saved-routes-select, #clear-tracking-queue-btn');
+            const loadRouteControls = document.querySelectorAll('#load-route-for-editing-btn, #delete-selected-route-btn, #add-to-tracking-queue-btn, #saved-routes-select, #clear-tracking-queue-btn');
 
 
             if (isTracking) {
@@ -681,7 +714,6 @@
                 prevBtn.disabled = true;
                 nextBtn.disabled = true;
             }
-            // La activación del checkbox en sí misma no debe depender de isTracking
         }
 
         document.getElementById('manual-mode-checkbox').addEventListener('change', updateManualControlsState);
@@ -699,41 +731,39 @@
             if (!isTracking) return;
             
             const currentRoute = trackingQueue[currentTrackingRouteIndex];
-            let newStopIndex = currentTrackingStopIndex + direction;
+            let tempProspectiveStopIndex = currentTrackingStopIndex + direction;
 
             if (direction > 0) { // Avanzando
-                if (newStopIndex + 1 < currentRoute.stops.length) { // Hay una siguiente parada en esta ruta
-                    currentTrackingStopIndex = newStopIndex;
-                } else { // Fin de la ruta actual, intentar pasar a la siguiente ruta
+                if (tempProspectiveStopIndex + 1 < currentRoute.stops.length) { 
+                    currentTrackingStopIndex = tempProspectiveStopIndex;
+                } else { 
                     currentTrackingRouteIndex++;
-                    if (currentTrackingRouteIndex < trackingQueue.length) { // Hay más rutas
-                        currentTrackingStopIndex = -1; // Para que apunte a la primera parada de la nueva ruta
+                    if (currentTrackingRouteIndex < trackingQueue.length) { 
+                        currentTrackingStopIndex = -1; 
                         document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
                         drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops);
-                        // Y luego avanzar a la primera parada de esta nueva ruta
-                        advanceToNextLogicalStop(true); // Forzar, ya que es manual
-                        return; // Ya se actualizó todo
-                    } else { // Fin de todas las rutas
+                        advanceToNextLogicalStop(true); 
+                        return; 
+                    } else { 
                         alert("Has llegado al final de todas las rutas.");
-                        document.getElementById('stop-tracking-btn').click(); // Detener seguimiento
+                        document.getElementById('stop-tracking-btn').click(); 
                         return;
                     }
                 }
             } else { // Retrocediendo
-                 if (newStopIndex >= -1) { // Aún dentro de la ruta actual o al inicio
-                    currentTrackingStopIndex = newStopIndex;
-                } else { // Intentar retroceder a la ruta anterior
+                 if (tempProspectiveStopIndex >= -1) { 
+                    currentTrackingStopIndex = tempProspectiveStopIndex;
+                } else { 
                     currentTrackingRouteIndex--;
-                    if (currentTrackingRouteIndex >= 0) { // Hay ruta anterior
+                    if (currentTrackingRouteIndex >= 0) { 
                         const prevRoute = trackingQueue[currentTrackingRouteIndex];
-                        currentTrackingStopIndex = prevRoute.stops.length - 2; // Último tramo de la ruta anterior
+                        currentTrackingStopIndex = prevRoute.stops.length - 2; 
                         document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
                         drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops);
-                    } else { // Inicio de la primera ruta
+                    } else { 
                         alert("Ya estás al inicio de la primera ruta.");
-                        currentTrackingRouteIndex = 0; // No ir a -1
-                        currentTrackingStopIndex = -1; // Mantener en el inicio conceptual
-                        // No hacer nada más, ya está en el límite
+                        currentTrackingRouteIndex = 0; 
+                        currentTrackingStopIndex = -1; 
                         return;
                     }
                 }
@@ -747,8 +777,6 @@
 
             const manualMode = document.getElementById('manual-mode-checkbox').checked;
             if (!forceManualAdvance && manualMode) {
-                // En modo manual, no avanzar automáticamente por proximidad, solo por botón
-                // Pero sí calcular tiempo para la parada actual
                 updateNextStopDisplayAndCalculateTime();
                 return;
             }
@@ -756,22 +784,20 @@
             currentTrackingStopIndex++;
             const currentRoute = trackingQueue[currentTrackingRouteIndex];
 
-            if (currentTrackingStopIndex + 1 >= currentRoute.stops.length) { // Llegó a la última parada de la ruta o más allá
-                currentTrackingRouteIndex++; // Intentar pasar a la siguiente ruta
-                if (currentTrackingRouteIndex < trackingQueue.length) { // Hay más rutas
-                    currentTrackingStopIndex = -1; // Reiniciar índice de parada para la nueva ruta
+            if (currentTrackingStopIndex + 1 >= currentRoute.stops.length) { 
+                currentTrackingRouteIndex++; 
+                if (currentTrackingRouteIndex < trackingQueue.length) { 
+                    currentTrackingStopIndex = -1; 
                     alert(`Ruta "${currentRoute.name}" completada. Iniciando ruta "${trackingQueue[currentTrackingRouteIndex].name}".`);
                     document.getElementById('current-route-info').textContent = trackingQueue[currentTrackingRouteIndex].name;
                     drawRouteOnMap(trackingQueue[currentTrackingRouteIndex].stops);
-                    // Avanzar lógicamente a la primera parada de esta nueva ruta
                     advanceToNextLogicalStop(forceManualAdvance);
                 } else {
                     alert("¡Todas las rutas completadas!");
-                    document.getElementById('stop-tracking-btn').click(); // Detener seguimiento
+                    document.getElementById('stop-tracking-btn').click(); 
                 }
-                return; // Salir porque ya se manejó el cambio de ruta o fin
+                return; 
             }
-            // Si llegamos aquí, seguimos en la misma ruta, o es la primera parada de una nueva ruta
             updateNextStopDisplayAndCalculateTime();
         }
         
@@ -783,7 +809,6 @@
             }
         
             const currentRoute = trackingQueue[currentTrackingRouteIndex];
-            // La parada "desde" es currentTrackingStopIndex (si >=0), la parada "hacia" es currentTrackingStopIndex + 1
             const nextStopTargetIndex = currentTrackingStopIndex + 1;
         
             if (nextStopTargetIndex < currentRoute.stops.length) {
@@ -792,229 +817,149 @@
             } else {
                 document.getElementById('next-stop-info').textContent = "Fin de ruta";
             }
-            calculateTimeDifference(); // Calcular inmediatamente
+            calculateTimeDifference(); 
         }
 
 
-        // --- CÁLCULO DE DIFERENCIA DE TIEMPO ---
+        // --- CÁLCULO DE DIFERENCIA DE TIEMPO (REVISADO) ---
         function calculateTimeDifference() {
             if (!isTracking || !lastKnownPosition || currentTrackingRouteIndex < 0 || currentTrackingRouteIndex >= trackingQueue.length) {
                 return;
             }
 
             const currentRoute = trackingQueue[currentTrackingRouteIndex];
-            // currentTrackingStopIndex es el índice de la parada DESDE la que se parte.
-            // La parada OBJETIVO es currentTrackingStopIndex + 1.
-
             const fromStopIndex = currentTrackingStopIndex;
             const toStopIndex = currentTrackingStopIndex + 1;
 
-            if (toStopIndex >= currentRoute.stops.length) { // Ya no hay "siguiente parada" en esta ruta
-                 // Comprobar si es el final de la ruta y no hay más paradas.
-                if (!document.getElementById('manual-mode-checkbox').checked) {
-                    advanceToNextLogicalStop(); // Intenta pasar a la siguiente ruta/parada si es automático
+            if (fromStopIndex < 0 || toStopIndex >= currentRoute.stops.length) {
+                // Si estamos antes de la primera parada (fromStopIndex = -1) o después de la última parada útil del tramo.
+                // O si no hay suficientes paradas en la ruta actual.
+                if (!document.getElementById('manual-mode-checkbox').checked && fromStopIndex >= 0 && toStopIndex >= currentRoute.stops.length) {
+                     // Si hemos "llegado" a la última parada y no es modo manual, intentar avanzar.
+                    advanceToNextLogicalStop();
+                } else if (toStopIndex >= currentRoute.stops.length) {
+                    document.getElementById('time-difference-display').textContent = "FIN";
+                    document.getElementById('time-difference-display').className = "";
                 } else {
-                     document.getElementById('time-difference-display').textContent = "FIN";
-                     document.getElementById('time-difference-display').className = "";
+                    // Podríamos mostrar tiempo hasta la primera parada si fromStopIndex es -1,
+                    // pero la lógica principal se basa en un tramo.
+                    document.getElementById('time-difference-display').textContent = "--:--";
                 }
                 return;
             }
 
+            const fromStop = currentRoute.stops[fromStopIndex];
             const toStop = currentRoute.stops[toStopIndex];
             const currentPositionLatLng = L.latLng(lastKnownPosition.lat, lastKnownPosition.lng);
 
-            let departureTimeFromPreviousStop, scheduledArrivalTimeAtNextStop;
-            let coordA, coordB;
+            // 1. Convertir horarios de parada a objetos Date para cálculos con timestamps
+            const [depH, depM] = fromStop.departureTime.split(':').map(Number);
+            let departureDateTime = new Date(); // Usar fecha actual como base
+            departureDateTime.setHours(depH, depM, 0, 0);
 
-            if (fromStopIndex < 0) { // Caso especial: Acercándose a la primera parada de la ruta
-                                     // Asumimos que la "salida" es desde la propia primera parada a su hora de salida
-                                     // y la "llegada" es a la primera parada a su hora de llegada.
-                                     // Esto es un poco conceptual, ya que no hay un "tramo" real antes de la primera parada.
-                                     // Una mejor aproximación sería que `fromStopIndex` NUNCA sea -1 durante un cálculo de tramo.
-                                     // `advanceToNextLogicalStop` debe asegurar que `fromStopIndex` sea >= 0 y `toStopIndex` sea `fromStopIndex + 1`.
+            const [arrH, arrM] = toStop.arrivalTime.split(':').map(Number);
+            let scheduledArrivalDateTimeAtNextStop = new Date(); // Usar fecha actual como base
+            scheduledArrivalDateTimeAtNextStop.setHours(arrH, arrM, 0, 0);
 
-                // Para el tramo hacia la PRIMERA parada (toStopIndex = 0):
-                // La "parada de salida" es conceptual. Usaremos la hora de salida de la PRIMERA parada como referencia para el inicio del día de esa parada.
-                // Y la hora de llegada a la PRIMERA parada como el objetivo.
-                // La distancia es desde la posición actual hasta la PRIMERA parada.
-                // Esta lógica es un poco forzada por la estructura "salida de parada A -> llegada a parada B".
-                // Para la primera parada, no hay "parada A" previa.
-                // Simplifiquemos: el cálculo se hace siempre entre una `departureStop` y una `arrivalStop`.
-                // Si `fromStopIndex` es -1, significa que estamos ANTES de la primera parada.
-                // El cálculo de "progreso" no tiene mucho sentido aquí.
-                // Mostraremos tiempo hasta la llegada a la PRIMERA parada.
-                // Pero el EJEMPLO habla de "SALIDA DE PARADA 1... LLEGADA A PARADA 2".
-                // Esto implica que currentTrackingStopIndex siempre será el índice de la última parada *DE LA QUE SE SALIÓ*.
-                // Entonces fromStopIndex = 0 significa que se salió de la parada 0.
-                
-                // CORRECCIÓN: `currentTrackingStopIndex` es el índice de la parada *desde la que partimos*.
-                // Si es -1, es el inicio absoluto, y nos dirigimos a la parada 0.
-                // La "salida" es un punto virtual antes de la primera parada.
-                // O, más simple, el cálculo empieza cuando salimos de la parada 0 hacia la 1.
-                // Re-evaluando: `advanceToNextLogicalStop` cuando `currentTrackingStopIndex` es -1, lo incrementa a 0.
-                // Entonces `fromStopIndex` será 0, y `toStopIndex` será 1.
-                // `departureStop = currentRoute.stops[0]`, `arrivalStop = currentRoute.stops[1]`. Esto parece más correcto.
-
-                // Si currentTrackingStopIndex es -1, significa que estamos en el "inicio" antes de la primera parada.
-                // No hay un "tramo" definido para calcular progreso proporcional. Podríamos estimar tiempo directo a la primera parada.
-                // Sin embargo, la lógica del ejemplo es clara: Salida de P1, Llegada a P2.
-                // Así que el cálculo de diferencia es para el tramo actual.
-                // `currentTrackingStopIndex` debe ser la parada de la que *partimos*.
-                // `currentTrackingStopIndex + 1` es la parada a la que *llegamos*.
-                // Cuando se inicia el seguimiento, `currentTrackingStopIndex` se pone en -1. `advanceToNextLogicalStop` lo pone en 0.
-                // Entonces, la primera etapa es `fromStop = stops[0]`, `toStop = stops[1]`. Esto está bien.
-
-                // PERO, si `currentTrackingStopIndex` es -1, entonces `fromStopIndex` sería -1.
-                // Vamos a ajustar: `advanceToNextLogicalStop` se llama al inicio.
-                // Si `currentTrackingStopIndex` es -1, se vuelve 0.
-                // Entonces `fromStopIndex` (que sería el nuevo `currentTrackingStopIndex`) es 0.
-                // Y `toStopIndex` es 1.
-                // Esto significa que el primer tramo es DESDE la parada 0 (su hora de SALIDA) HACIA la parada 1 (su hora de LLEGADA).
-
-                // Si el currentTrackingStopIndex es -1, y estamos yendo a la parada 0.
-                // No hay "parada de salida". El cálculo proporcional no aplica bien.
-                // Para simplificar, en este caso, solo mostraremos el tiempo restante para la llegada a la primera parada (toStop).
-                // O, mejor aún, la lógica de `advanceToNextLogicalStop` debería asegurar que
-                // `currentTrackingStopIndex` siempre se refiera a la parada de la que partimos.
-                // Si `currentTrackingStopIndex` es -1, aún no hemos "partido" de ninguna parada.
-                // La primera acción de `advanceToNextLogicalStop` es `currentTrackingStopIndex++`, poniéndolo en 0.
-                // Entonces el tramo es:
-                // `departureStop = currentRoute.stops[0]`
-                // `targetArrivalStop = currentRoute.stops[1]`
-
-                // El escenario donde `fromStopIndex` es -1 no debería ocurrir si `advanceToNextLogicalStop`
-                // se llama correctamente al inicio y al cambiar de parada.
-                // Si currentTrackingStopIndex es -1, es "antes de la primera parada".
-                // El primer tramo real es *desde la salida de la primera parada* hacia la *llegada a la segunda*.
-                // Entonces, si `currentTrackingStopIndex = 0`, `fromStop` es `stops[0]`, `toStop` es `stops[1]`.
-                // `departureTimeFromPreviousStop` es `stops[0].departureTime`.
-                // `scheduledArrivalTimeAtNextStop` es `stops[1].arrivalTime`.
-                // `coordA` es `stops[0]`, `coordB` es `stops[1]`.
-                // Esto es lo que se implementará.
-
-                 // Este caso (fromStopIndex < 0) implica que aún no hemos "salido" de la primera parada.
-                 // El cálculo proporcional como se describe es para un tramo entre dos paradas.
-                 // Si estamos antes de la primera parada, no hay "parada de salida" definida en la ruta.
-                 // Por ahora, si esto ocurre, indicamos que se espera salida de la primera parada.
-                if (fromStopIndex < 0) { // Significa que estamos apuntando a la parada 0 como *llegada*
-                    // Este escenario es antes de "salir" de la primera parada.
-                    // El cálculo proporcional no aplica de la misma forma.
-                    // Podríamos calcular un tiempo directo a la parada 0, pero no sigue el formato -/+MM:SS por "adelanto/atraso en tramo".
-                    // Simplemente mostramos que la próxima es la parada 0.
-                    const arrivalAtFirstStopTime = timeToMinutes(currentRoute.stops[0].arrivalTime);
-                    const nowMinutes = timeToMinutes(new Date());
-                    const diffMinutes = arrivalAtFirstStopTime - nowMinutes;
-                    document.getElementById('time-difference-display').textContent = formatMinutesToTimeDiff(diffMinutes, false); // No es adelanto/atraso de tramo
-                    document.getElementById('time-difference-display').className = diffMinutes > 0 ? "early" : "late";
-                    return;
-                }
+            // 2. Ajustar fecha de llegada si cruza medianoche
+            if (scheduledArrivalDateTimeAtNextStop.getTime() < departureDateTime.getTime()) {
+                scheduledArrivalDateTimeAtNextStop.setDate(scheduledArrivalDateTimeAtNextStop.getDate() + 1);
             }
             
-            // Caso normal: estamos en un tramo entre fromStop y toStop
-            const fromStop = currentRoute.stops[fromStopIndex];
-            departureTimeFromPreviousStop = timeToMinutes(fromStop.departureTime);
-            scheduledArrivalTimeAtNextStop = timeToMinutes(toStop.arrivalTime);
-            coordA = L.latLng(fromStop.lat, fromStop.lng);
-            coordB = L.latLng(toStop.lat, toStop.lng);
+            // 3. Calcular duración total programada del tramo en milisegundos
+            const totalLegScheduledTimeMillis = scheduledArrivalDateTimeAtNextStop.getTime() - departureDateTime.getTime();
 
-
+            // 4. Calcular proporción de distancia cubierta
+            const coordA = L.latLng(fromStop.lat, fromStop.lng);
+            const coordB = L.latLng(toStop.lat, toStop.lng);
             const totalLegDistance = coordA.distanceTo(coordB);
             const distanceFromStartOfLeg = coordA.distanceTo(currentPositionLatLng);
             
             let proportionOfDistanceCovered = 0;
-            if (totalLegDistance > 1) { // Evitar división por cero si paradas están en el mismo sitio
+            if (totalLegDistance > 1) { 
                 proportionOfDistanceCovered = distanceFromStartOfLeg / totalLegDistance;
-                proportionOfDistanceCovered = Math.max(0, Math.min(1, proportionOfDistanceCovered)); // Clamp entre 0 y 1
-            } else if (distanceFromStartOfLeg > 1) { // Estamos más allá del destino o las paradas coinciden pero nos movimos
+                proportionOfDistanceCovered = Math.max(0, Math.min(1, proportionOfDistanceCovered)); 
+            } else if (distanceFromStartOfLeg > 1) {
                  proportionOfDistanceCovered = 1;
             }
 
+            // 5. Calcular la hora programada (timestamp) en la posición actual del chófer
+            const scheduledTimeAtCurrentPositionMillis = departureDateTime.getTime() + (proportionOfDistanceCovered * totalLegScheduledTimeMillis);
 
-            const totalLegScheduledTimeMinutes = scheduledArrivalTimeAtNextStop - departureTimeFromPreviousStop;
-            // Manejar cruce de medianoche para el tiempo del tramo
-            let effectiveTotalLegScheduledTimeMinutes = totalLegScheduledTimeMinutes;
-            if (totalLegScheduledTimeMinutes < 0) { // Cruzó medianoche (ej: Salida 23:00, Llegada 01:00)
-                effectiveTotalLegScheduledTimeMinutes += 24 * 60;
-            }
+            // 6. Obtener hora actual (timestamp)
+            const currentTimeMillis = new Date().getTime();
 
-            const scheduledTimeAtCurrentPositionMinutes = departureTimeFromPreviousStop + (proportionOfDistanceCovered * effectiveTotalLegScheduledTimeMinutes);
+            // 7. Calcular diferencia en milisegundos y luego en minutos (decimal)
+            // La diferencia es: Hora Programada en Posición - Hora Actual
+            // Si es positivo, el chófer llegó ANTES de lo programado (adelantado).
+            // Si es negativo, el chófer llegó DESPUÉS de lo programado (atrasado).
+            const diffInMillis = scheduledTimeAtCurrentPositionMillis - currentTimeMillis;
+            const diffInTotalMinutes = diffInMillis / (1000 * 60);
             
-            const currentTimeMinutes = timeToMinutes(new Date());
-
-            // Para la diferencia, necesitamos ver si currentTimeMinutes es "menor" que scheduledTimeAtCurrentPositionMinutes
-            // considerando el posible cruce de medianoche del scheduledTime.
-            let diffInMinutes;
-            // Si el tiempo programado y el actual están en días diferentes (ej. programado 00:30, actual 23:50)
-            // o si ambos están en el mismo "día" relativo a la salida de la parada.
-            if (scheduledTimeAtCurrentPositionMinutes >= departureTimeFromPreviousStop) { // Mismo día que salida
-                if (currentTimeMinutes >= departureTimeFromPreviousStop) { // Actual también en mismo día
-                    diffInMinutes = scheduledTimeAtCurrentPositionMinutes - currentTimeMinutes;
-                } else { // Actual es del día "anterior" (ej. salida 23:00, programado 23:30, actual 00:10 del día siguiente, es muy tarde)
-                    diffInMinutes = scheduledTimeAtCurrentPositionMinutes - (currentTimeMinutes + 24*60) ;
-                }
-            } else { // Tiempo programado cruzó medianoche (ej. salida 23:00, programado 00:30)
-                if (currentTimeMinutes >= departureTimeFromPreviousStop) { // Actual aún en día de salida (ej. actual 23:50, es temprano)
-                     diffInMinutes = (scheduledTimeAtCurrentPositionMinutes + 24*60) - currentTimeMinutes;
-                } else { // Actual también cruzó medianoche (ej. actual 00:10, puede ser temprano o tarde)
-                     diffInMinutes = scheduledTimeAtCurrentPositionMinutes - currentTimeMinutes; // Ambos en el "nuevo día"
-                }
-            }
-
-
-            document.getElementById('time-difference-display').textContent = formatMinutesToTimeDiff(diffInMinutes);
+            // 8. Formatear y mostrar
+            document.getElementById('time-difference-display').textContent = formatMinutesToTimeDiff(diffInTotalMinutes);
             const displayElement = document.getElementById('time-difference-display');
-            if (diffInMinutes < -0.5) { // Atrasado (más de 30s)
+            
+            // Usar un pequeño umbral (ej. 0.1 minutos = 6 segundos) para considerar "a tiempo"
+            if (diffInTotalMinutes < -0.1) { // Atrasado 
                 displayElement.className = 'late';
-            } else if (diffInMinutes > 0.5) { // Adelantado (más de 30s)
+            } else if (diffInTotalMinutes > 0.1) { // Adelantado
                 displayElement.className = 'early';
             } else {
                 displayElement.className = 'on-time';
             }
 
-            // Comprobar proximidad para avance automático (si no está en modo manual)
-            const distanceToNextStop = currentPositionLatLng.distanceTo(coordB);
-            if (!document.getElementById('manual-mode-checkbox').checked && distanceToNextStop < PROXIMITY_THRESHOLD_METERS) {
-                advanceToNextLogicalStop();
+            // Comprobar proximidad para avance automático
+            const distanceToNextStopTarget = currentPositionLatLng.distanceTo(coordB);
+            if (!document.getElementById('manual-mode-checkbox').checked && distanceToNextStopTarget < PROXIMITY_THRESHOLD_METERS) {
+                // Asegurarse de que no está ya en la última parada de la última ruta antes de avanzar.
+                const isLastStopOfLastRoute = (currentTrackingRouteIndex === trackingQueue.length - 1) &&
+                                              (toStopIndex === currentRoute.stops.length - 1);
+                if (!isLastStopOfLastRoute) {
+                    advanceToNextLogicalStop();
+                } else if (distanceToNextStopTarget < PROXIMITY_THRESHOLD_METERS / 2) { 
+                    // Si está muy cerca de la última parada de todo, podría marcar como FIN
+                    // Esto es para evitar que se quede en la última parada sin mensaje de FIN si no avanza.
+                    document.getElementById('time-difference-display').textContent = "FIN";
+                    document.getElementById('time-difference-display').className = "";
+                    // Considerar detener el seguimiento aquí si se desea.
+                }
             }
         }
 
-        // --- UTILIDADES DE TIEMPO ---
-        function timeToMinutes(timeInput) { // timeInput puede ser "HH:MM" o un objeto Date
+
+        function timeToMinutes(timeInput) { 
             let hours, minutes;
             if (typeof timeInput === 'string') {
                 [hours, minutes] = timeInput.split(':').map(Number);
             } else if (timeInput instanceof Date) {
                 hours = timeInput.getHours();
                 minutes = timeInput.getMinutes();
-            } else { //Fallback o error
+            } else {
                 return 0;
             }
             return hours * 60 + minutes;
         }
         
-        function formatMinutesToTimeDiff(totalMinutes, showPlusForPositive = true) {
-            const sign = totalMinutes < 0 ? "-" : (showPlusForPositive ? "+" : "");
-            const absMinutes = Math.abs(totalMinutes);
-            const mm = Math.floor(absMinutes);
-            const ss = Math.round((absMinutes - mm) * 60);
+        function formatMinutesToTimeDiff(totalMinutesWithFraction) {
+            const sign = totalMinutesWithFraction < 0 ? "-" : "+";
+            // Para el redondeo: queremos que -0.001 sea -00:00, no +00:00
+            // Y +0.001 sea +00:00
+            // Math.abs para el cálculo de mm y ss
+            const absTotalMinutes = Math.abs(totalMinutesWithFraction);
+            const mm = Math.floor(absTotalMinutes);
+            const ss = Math.round((absTotalMinutes - mm) * 60); 
+
+            // Corrección para que 60 segundos se muestren como 01:00
+            if (ss === 60) {
+                return `${sign}${String(mm + 1).padStart(2, '0')}:00`;
+            }
             return `${sign}${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
         }
         
-        // --- BINDINGS INICIALES ---
         function bindEventListeners() {
-            // Ya hecho para algunos, pero para asegurar:
-            document.getElementById('start-new-route-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('save-route-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('load-route-for-editing-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('add-to-tracking-queue-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('clear-tracking-queue-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('start-tracking-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('stop-tracking-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('manual-mode-checkbox').addEventListener('change', updateManualControlsState);
-            document.getElementById('prev-stop-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-            document.getElementById('next-stop-btn').addEventListener('click', () => { /* ... ya implementado ... */ });
-             document.getElementById('cancel-stop-btn').addEventListener('click', closeStopModal);
-
+            // ... (bindings existentes se mantienen, el de 'delete-selected-route-btn' ya está arriba) ...
+            document.getElementById('cancel-stop-btn').addEventListener('click', closeStopModal);
         }
 
     </script>
