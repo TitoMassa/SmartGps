@@ -725,7 +725,6 @@ function calculateTimeDifference() {
 // ... (código existente) ...
 
 // Dentro de la función calculateTimeDifference, o en el setInterval de seguimiento
-function calculateTimeDifference() {
     // ... (código existente de calculateTimeDifference) ...
 
     if (isTracking && currentTrackingRouteIndex >= 0 && currentTrackingStopIndex >= -1) {
