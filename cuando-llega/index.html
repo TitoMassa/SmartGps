@@ -1,36 +1,35 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cuando Llega?</title>
-    <link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuando Llega</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+  <meta name="theme-color" content="#4A90E2">
 </head>
 <body>
-    <div class="container">
-        <h1>¿Cuándo Llega Mi Colectivo?</h1>
+  <h1>Cuando Llega</h1>
+  
+  <section>
+    <h2>Seleccionar Ruta</h2>
+    <select id="route-select">
+      <option value="">Seleccionar ruta</option>
+    </select>
+  </section>
 
-        <div class="selection-group">
-            <label for="route-select">Selecciona tu Ruta:</label>
-            <select id="route-select">
-                <option value="">-- Elige una ruta --</option>
-            </select>
-        </div>
+  <section>
+    <h2>Seleccionar Parada</h2>
+    <select id="stop-select" disabled>
+      <option value="">Seleccionar parada</option>
+    </select>
+  </section>
 
-        <div class="selection-group">
-            <label for="stop-select">Selecciona tu Parada:</label>
-            <select id="stop-select" disabled>
-                <option value="">-- Elige una parada --</option>
-            </select>
-        </div>
+  <section>
+    <div id="eta-display">Seleccione una parada para ver el ETA</div>
+    <div id="last-update"></div>
+  </section>
 
-        <div id="arrival-info">
-            <p id="arrival-time-display">Selecciona una ruta y parada para ver el tiempo de llegada.</p>
-            <p id="bus-status-note" class="note"></p>
-        </div>
-         <p class="last-updated">Última actualización de datos: <span id="last-data-update">Nunca</span></p>
-    </div>
-
-    <script src="js/app.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
