@@ -2,7 +2,7 @@
   "name": "Smart Move Pro",
   "short_name": "SmartMove",
   "description": "Asistente de ruta para choferes de colectivo.",
-  "start_url": "./index.html",  /* Asegúrate que el nombre del HTML coincida */
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#007bff",
