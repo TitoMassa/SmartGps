@@ -4,95 +4,100 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Move Pro</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
     <link rel="stylesheet" href="css/style.css">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#3f51b5"/>
+    <meta name="theme-color" content="#4CAF50">
 </head>
 <body>
-    <header>
-        <h1>Smart Move Pro</h1>
-    </header>
-    <div id="map"></div>
-    <div class="controls-panel">
-        <div class="control-group">
-            <h3>Definición de Ruta</h3>
-            <div>
-                <label for="startLat">Latitud Inicio:</label>
-                <input type="number" id="startLat" step="any" placeholder="Ej: -34.6037">
-                <label for="startLng">Longitud Inicio:</label>
-                <input type="number" id="startLng" step="any" placeholder="Ej: -58.3816">
-                <label for="startName">Nombre Inicio (Ej: Terminal):</label>
-                <input type="text" id="startName" value="Inicio">
-                <label for="startTime">Hora Salida Programada Inicio:</label>
-                <input type="time" id="startTime">
-            </div>
-            <div>
-                <label for="endLat">Latitud Fin:</label>
-                <input type="number" id="endLat" step="any" placeholder="Ej: -34.5889">
-                <label for="endLng">Longitud Fin:</label>
-                <input type="number" id="endLng" step="any" placeholder="Ej: -58.4000">
-                <label for="endName">Nombre Fin (Ej: Plaza):</label>
-                <input type="text" id="endName" value="Fin">
-                <label for="endTime">Hora Llegada Programada Fin:</label>
-                <input type="time" id="endTime">
-            </div>
-            <p>Toca el mapa para añadir paradas intermedias (después de definir Inicio/Fin).</p>
-            <div>
-                <input type="checkbox" id="autoCalcTimes" checked>
-                <label for="autoCalcTimes">Calcular horarios intermedios automáticamente</label>
-            </div>
-            <div id="intermediateStopManualTime" style="display:none;">
-                <label for="intermediateTime">Hora Llegada/Paso Parada Intermedia:</label>
-                <input type="time" id="intermediateTime">
-            </div>
+    <div id="app-container">
+        <div id="map-container">
+            <div id="map"></div>
         </div>
 
-        <div class="control-group">
-            <h3>Paradas de la Ruta Actual</h3>
-            <ul id="stopsList"></ul>
-        </div>
+        <div id="controls-panel">
+            <!-- Route Editor -->
+            <section id="route-editor-section">
+                <h2>Editor de Ruta</h2>
+                <div>
+                    <label for="routeName">Nombre de Ruta:</label>
+                    <input type="text" id="routeName" placeholder="Ej: Linea 101 - Ramal A">
+                </div>
+                <div>
+                    <button id="setStartPointMode">Definir Inicio en Mapa</button>
+                    <input type="text" id="startPointName" placeholder="Nombre Pto. Inicio (Opcional)">
+                    <input type="time" id="startPointTime">
+                </div>
+                <div>
+                    <button id="setEndPointMode">Definir Fin en Mapa</button>
+                    <input type="text" id="endPointName" placeholder="Nombre Pto. Fin (Opcional)">
+                    <input type="time" id="endPointTime">
+                </div>
+                <div>
+                    <button id="addIntermediateStopMode" disabled>Añadir Parada Intermedia en Mapa</button>
+                </div>
+                <div>
+                    <input type="checkbox" id="autoCalcTimes" checked>
+                    <label for="autoCalcTimes">Calcular horarios intermedios automáticamente</label>
+                </div>
+                <div id="stops-list-editor">
+                    <h3>Paradas de la Ruta Actual:</h3>
+                    <ul id="current-route-stops-ul"></ul>
+                </div>
+                <div>
+                    <button id="saveRoute">Guardar Ruta</button>
+                    <button id="clearRouteEditor">Nueva Ruta (Limpiar)</button>
+                </div>
+            </section>
 
-        <div class="control-group">
-            <h3>Gestión de Rutas</h3>
-            <label for="routeName">Nombre de Ruta:</label>
-            <input type="text" id="routeName" placeholder="Ej: Linea 101 - Ramal A">
-            <button id="saveRouteBtn">Guardar Ruta</button>
-            <hr>
-            <label for="loadRouteSelect">Cargar Ruta:</label>
-            <select id="loadRouteSelect"></select>
-            <button id="loadRouteBtn">Cargar Seleccionada</button>
-            <button id="deleteRouteBtn" class="danger">Eliminar Seleccionada</button>
-        </div>
+            <!-- Route Management -->
+            <section id="route-management-section">
+                <h2>Gestión de Rutas Guardadas</h2>
+                <select id="savedRoutesDropdown"></select>
+                <button id="loadRoute">Cargar Ruta</button>
+                <button id="deleteRoute">Eliminar Ruta</button>
+            </section>
 
-        <div class="control-group">
-            <h3>Cola de Seguimiento</h3>
-            <button id="addToQueueBtn">Añadir Ruta Cargada a Cola</button>
-            <ul id="trackingQueueDisplay"></ul>
-            <button id="clearQueueBtn" class="danger">Limpiar Cola</button>
-        </div>
-        
-        <div class="control-group">
-            <h3>Seguimiento en Tiempo Real</h3>
-            <button id="startTrackingBtn" class="secondary">Iniciar Seguimiento</button>
-            <button id="stopTrackingBtn" class="danger" disabled>Detener Seguimiento</button>
-            <div>
-                <input type="checkbox" id="manualControlCheckbox">
-                <label for="manualControlCheckbox">Control Manual Parada/Ruta</label>
-            </div>
-            <div class="manual-controls">
-                <button id="prevStopBtn" disabled>Parada Anterior</button>
-                <button id="nextStopBtn" disabled>Parada Siguiente</button>
-            </div>
-            <div class="info-display">
-                <p>Próxima Parada: <span id="nextStopInfo">---</span></p>
-                <p>Diferencia Horario: <span id="timeDiffInfo">---</span></p>
-                <p>Estado GPS: <span id="gpsStatus">Inactivo</span></p>
-            </div>
+            <!-- Tracking Queue -->
+            <section id="tracking-queue-section">
+                <h2>Cola de Seguimiento</h2>
+                <select id="routesForQueueDropdown"></select>
+                <button id="addToTrackingQueue">Añadir Ruta a Cola</button>
+                <div id="tracking-queue-display">
+                    <h3>Rutas en Cola:</h3>
+                    <ul id="tracking-queue-ul"></ul>
+                </div>
+                <button id="clearTrackingQueue">Limpiar Cola</button>
+            </section>
+
+            <!-- Tracking Control -->
+            <section id="tracking-control-section">
+                <h2>Control de Seguimiento</h2>
+                <button id="startTracking" disabled>Iniciar Seguimiento</button>
+                <button id="stopTracking" disabled>Detener Seguimiento</button>
+                <div id="tracking-info">
+                    <p>Ruta Activa: <span id="activeRouteName">-</span></p>
+                    <p>Próxima Parada: <span id="nextStopInfo">-</span></p>
+                    <p>Diferencia Horario: <span id="timeDifferenceInfo">-</span></p>
+                </div>
+                <div>
+                    <input type="checkbox" id="manualModeCheckbox" disabled>
+                    <label for="manualModeCheckbox">Control Manual Parada/Ruta</label>
+                </div>
+                <div id="manual-controls" style="display: none;">
+                    <button id="prevStopButton">Parada Anterior</button>
+                    <button id="nextStopButton">Parada Siguiente</button>
+                </div>
+            </section>
+             <p id="app-status"></p>
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
     <script src="js/app.js"></script>
 </body>
 </html>
