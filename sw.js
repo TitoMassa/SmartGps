@@ -1,125 +1,96 @@
-const CACHE_NAME = 'smart-move-pro-cache-v2'; // Increment version on change
-const APP_SHELL_FILES = [
-    '/', // Or '/index.html' if your server setup requires it
-    '/index.html',
-    '/css/style.css',
-    '/js/app.js',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-    // Crucial for Leaflet default markers to work offline
-    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-    '/manifest.json',
-    '/icons/icon-192x192.png', // Add other critical icons
-    '/icons/icon-512x512.png'
+// sw.js
+const CACHE_NAME = 'smartmove-pro-cache-v2'; // Incrementa versión si cambias algo
+const APP_SHELL_URLS = [
+  'index.html',
+  'css/style.css',
+  'js/app.js',
+  'manifest.json',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  // Si tienes imágenes de marcadores de Leaflet locales, añádelas también
+  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  'icons/icon-192x192.png',
+  'icons/icon-512x512.png'
 ];
 
-self.addEventListener('install', event => {
-    console.log('[SW] Install');
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                console.log('[SW] Caching App Shell');
-                // Use { cache: 'reload' } for CDN assets during install to ensure freshness if desired,
-                // but be mindful of rate limits if CDN is aggressive. Default is fine too.
-                const requests = APP_SHELL_FILES.map(url => {
-                    if (url.startsWith('http')) { // External CDN URL
-                        return new Request(url, { cache: 'reload' });
-                    }
-                    return url; // Local file
-                });
-                return cache.addAll(requests)
-                    .catch(error => {
-                        console.error('[SW] Failed to cache app shell files during install:', error);
-                        // Log individual file fetch errors for debugging
-                        requests.forEach(req => {
-                            const urlToFetch = (typeof req === 'string') ? req : req.url;
-                            fetch(urlToFetch).then(response => {
-                                if (!response.ok) {
-                                    console.error(`[SW] Failed to fetch for caching: ${urlToFetch}, status: ${response.status}`);
-                                }
-                            }).catch(fetchError => {
-                                console.error(`[SW] Network error fetching for caching: ${urlToFetch}`, fetchError);
-                            });
-                        });
-                    });
-            })
-    );
+self.addEventListener('install', (event) => {
+  console.log('[SW] Install event');
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('[SW] Caching App Shell');
+        // Usamos {cache: 'reload'} para asegurar que siempre buscamos la última versión
+        // de estos archivos durante la instalación, especialmente para Leaflet CDN.
+        const requests = APP_SHELL_URLS.map(url => new Request(url, {cache: 'reload'}));
+        return cache.addAll(requests);
+      })
+      .catch(error => {
+        console.error('[SW] Failed to cache app shell:', error);
+      })
+  );
 });
 
-self.addEventListener('activate', event => {
-    console.log('[SW] Activate');
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cacheName => {
-                    if (cacheName !== CACHE_NAME) {
-                        console.log('[SW] Removing old cache:', cacheName);
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        }).then(() => self.clients.claim()) // Ensure new SW takes control immediately
-    );
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activate event');
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('[SW] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  return self.clients.claim(); // Permite al SW activado tomar control inmediatamente
 });
 
-self.addEventListener('fetch', event => {
-    const url = new URL(event.request.url);
-
-    // Serve app shell files from cache first
-    if (APP_SHELL_FILES.includes(url.pathname) || APP_SHELL_FILES.includes(url.href) || (url.pathname === '/' && APP_SHELL_FILES.includes('/index.html'))) {
-        event.respondWith(
-            caches.match(event.request).then(cachedResponse => {
-                if (cachedResponse) {
-                    return cachedResponse;
-                }
-                return fetch(event.request).then(networkResponse => {
-                    // Optionally cache again if missed during install (e.g., dynamic request)
-                    // Be cautious with caching everything by default.
-                    return networkResponse;
-                });
-            })
-        );
-        return;
-    }
-
-    // For other requests (e.g., API calls, map tiles), try network first, then cache.
-    // This is a common strategy for dynamic content or third-party resources.
-    event.respondWith(
-        fetch(event.request)
-            .then(networkResponse => {
-                // If fetch is successful, clone and cache it for future offline use
-                if (networkResponse && networkResponse.status === 200) {
-                    // Only cache GET requests
-                    if (event.request.method === 'GET' && (url.protocol === 'http:' || url.protocol === 'https:')) {
-                         // Be careful about caching too much, especially from CDNs with versioned URLs.
-                         // Map tiles are good candidates for caching.
-                        const responseToCache = networkResponse.clone();
-                        caches.open(CACHE_NAME).then(cache => {
-                            cache.put(event.request, responseToCache);
-                        });
-                    }
-                }
-                return networkResponse;
-            })
-            .catch(() => {
-                // If network fails, try to serve from cache
-                return caches.match(event.request).then(cachedResponse => {
-                    if (cachedResponse) {
-                        return cachedResponse;
-                    }
-                    // If not in cache and network failed, return a proper error or offline fallback
-                    // For map tiles, this might mean the map doesn't load more tiles when offline
-                    // For other assets, you could return a specific offline.html or an error response.
-                    if (event.request.destination === 'image') {
-                        // return new Response('<svg>...</svg>', { headers: { 'Content-Type': 'image/svg+xml' } });
-                    }
-                    return new Response('Network error and not in cache', {
-                        status: 408,
-                        headers: { 'Content-Type': 'text/plain' },
-                    });
-                });
-            })
-    );
+self.addEventListener('fetch', (event) => {
+  // Cache First para los recursos de la App Shell
+  if (APP_SHELL_URLS.some(url => event.request.url.endsWith(new URL(url, self.location.origin).pathname))) {
+      event.respondWith(
+          caches.match(event.request).then((cachedResponse) => {
+              if (cachedResponse) {
+                  // console.log('[SW] Serving from cache:', event.request.url);
+                  return cachedResponse;
+              }
+              // console.log('[SW] Fetching from network (and caching for app shell):', event.request.url);
+              return fetch(event.request).then(networkResponse => {
+                  return caches.open(CACHE_NAME).then(cache => {
+                      // No es estrictamente necesario volver a cachear aquí si ya se hizo en install,
+                      // pero podría ser útil si algo falló o para actualizaciones dinámicas.
+                      // cache.put(event.request, networkResponse.clone()); // Opcional
+                      return networkResponse;
+                  });
+              });
+          })
+      );
+  } else {
+      // Network first (o cache then network) para otros recursos (ej. tiles del mapa, APIs)
+      event.respondWith(
+          fetch(event.request)
+              .then(networkResponse => {
+                  // Opcional: cachear tiles del mapa si se desea, pero puede llenar la caché rápido.
+                  // if (event.request.url.includes('tile.openstreetmap.org')) {
+                  //   return caches.open(TILE_CACHE_NAME).then(cache => {
+                  //     cache.put(event.request, networkResponse.clone());
+                  //     return networkResponse;
+                  //   });
+                  // }
+                  return networkResponse;
+              })
+              .catch(() => {
+                  // Si la red falla, intentar servir desde caché si existe (para assets no-shell)
+                  return caches.match(event.request).then(cachedResponse => {
+                      if (cachedResponse) return cachedResponse;
+                      // Aquí podrías retornar una página de offline genérica si lo deseas.
+                      // console.warn('[SW] Network request failed, no cache match for:', event.request.url);
+                  });
+              })
+      );
+  }
 });
