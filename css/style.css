@@ -1,150 +1,175 @@
+/* css/style.css */
 body {
-  font-family: sans-serif;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background-color: #f4f4f4;
-  color: #333;
+    font-family: sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #f4f4f4;
+    color: #333;
 }
 
-header {
-  background-color: #3f51b5;
-  color: white;
-  padding: 10px;
-  text-align: center;
+#app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden; /* Prevent body scroll when panel scrolls */
+}
+
+#map-container {
+    height: 40%; /* Adjust as needed */
+    width: 100%;
 }
 
 #map {
-  height: 40vh; /* Ajusta según necesidad */
-  width: 100%;
-  border-bottom: 2px solid #3f51b5;
+    height: 100%;
+    width: 100%;
+    background-color: #e0e0e0;
 }
 
-.controls-panel {
-  flex-grow: 1;
-  overflow-y: auto;
-  padding: 10px;
-  background-color: #fff;
+#controls-panel {
+    height: 60%; /* Adjust as needed */
+    overflow-y: auto;
+    padding: 10px;
+    background-color: #fff;
+    border-top: 1px solid #ccc;
+    box-sizing: border-box;
 }
 
-.control-group {
-  margin-bottom: 15px;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  background-color: #f9f9f9;
+section {
+    margin-bottom: 20px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
 }
 
-.control-group h3 {
-  margin-top: 0;
-  color: #3f51b5;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 5px;
+h2, h3 {
+    margin-top: 0;
+    color: #4CAF50; /* Theme color */
 }
 
 label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
 }
 
 input[type="text"],
 input[type="time"],
-input[type="number"],
 select {
-  width: calc(100% - 12px);
-  padding: 8px;
-  margin-bottom: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  box-sizing: border-box;
+    width: calc(100% - 22px); /* Full width minus padding and border */
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
 }
 
 button {
-  background-color: #4CAF50;
-  color: white;
-  padding: 10px 15px;
-  margin: 5px 2px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9em;
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 15px;
+    margin: 5px 2px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
 }
 
 button:hover {
-  background-color: #45a049;
+    background-color: #45a049;
 }
 
-button.danger {
-  background-color: #f44336;
-}
-button.danger:hover {
-  background-color: #da190b;
-}
-button.secondary {
-    background-color: #007bff;
-}
-button.secondary:hover {
-    background-color: #0056b3;
-}
-
-
-#stopsList, #trackingQueueDisplay {
-  list-style-type: none;
-  padding: 0;
-}
-
-#stopsList li, #trackingQueueDisplay li {
-  background-color: #e9e9e9;
-  padding: 8px;
-  margin-bottom: 5px;
-  border-radius: 3px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-#stopsList button {
-    padding: 3px 6px;
-    font-size: 0.8em;
-}
-
-.info-display {
-  margin-top: 10px;
-  padding: 10px;
-  background-color: #e3f2fd;
-  border: 1px solid #90caf9;
-  border-radius: 4px;
-}
-
-.info-display p {
-  margin: 5px 0;
-}
-
-.manual-controls button {
-    background-color: #ff9800;
-}
-.manual-controls button:hover {
-    background-color: #e68a00;
-}
-.manual-controls button:disabled {
+button:disabled {
     background-color: #ccc;
     cursor: not-allowed;
 }
 
+#stops-list-editor ul,
+#tracking-queue-display ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+#stops-list-editor li,
+#tracking-queue-display li {
+    background-color: #e9e9e9;
+    padding: 8px;
+    margin-bottom: 5px;
+    border-radius: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#stops-list-editor li button {
+    background-color: #f44336; /* Red for delete */
+    font-size: 0.8em;
+    padding: 5px 8px;
+}
+#stops-list-editor li button:hover {
+    background-color: #da190b;
+}
+
+#tracking-info p {
+    margin: 5px 0;
+    font-size: 0.9em;
+}
+
+#tracking-info span {
+    font-weight: bold;
+}
+
+#manual-controls {
+    margin-top: 10px;
+}
+
+#app-status {
+    margin-top: 10px;
+    font-style: italic;
+    color: #555;
+}
+
 /* Responsive adjustments */
 @media (min-width: 768px) {
-  body {
-    flex-direction: row;
-  }
-  #map {
-    height: 100vh;
-    width: 60%; /* Mapa más grande en escritorio */
-    border-bottom: none;
-    border-right: 2px solid #3f51b5;
-  }
-  .controls-panel {
-    width: 40%;
-  }
+    #app-container {
+        flex-direction: row;
+    }
+    #map-container {
+        height: 100%;
+        width: 60%; /* Map takes more space on larger screens */
+    }
+    #controls-panel {
+        height: 100%;
+        width: 40%;
+        border-top: none;
+        border-left: 1px solid #ccc;
+    }
+}
+
+/* Leaflet icon customization for Start/End/Intermediate */
+.leaflet-marker-icon.start-icon,
+.leaflet-marker-icon.end-icon,
+.leaflet-marker-icon.intermediate-icon {
+    text-align: center;
+    font-weight: bold;
+    color: white;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+}
+
+.start-icon div { background-color: green; padding: 5px; border-radius: 50%; }
+.end-icon div { background-color: red; padding: 5px; border-radius: 50%; }
+.intermediate-icon div { background-color: orange; padding: 5px; border-radius: 50%; }
+
+/* Current Position Marker */
+.gps-marker {
+    background-color: rgba(0, 120, 255, 0.8); /* Blue */
+    border: 2px solid white;
+    border-radius: 50%;
+    width: 16px !important; /* Leaflet DivIcon needs !important sometimes */
+    height: 16px !important;
+    box-shadow: 0 0 8px rgba(0,0,0,0.6);
 }
