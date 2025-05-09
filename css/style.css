@@ -1,215 +1,150 @@
 body {
-    font-family: sans-serif;
-    margin: 0;
-    background-color: #f4f4f4;
-    color: #333;
-    line-height: 1.6;
+  font-family: sans-serif;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #f4f4f4;
+  color: #333;
 }
 
-.container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh; /* Ensure container takes at least full height */
+header {
+  background-color: #3f51b5;
+  color: white;
+  padding: 10px;
+  text-align: center;
 }
 
-h1, h2, h3 {
-    color: #303F9F;
-    text-align: center;
-    margin-top: 10px;
-    margin-bottom: 10px;
-}
-
-.map {
-    height: 300px; /* Fixed height for the map */
-    width: 100%;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    flex-shrink: 0; /* Prevent map from shrinking */
+#map {
+  height: 40vh; /* Ajusta según necesidad */
+  width: 100%;
+  border-bottom: 2px solid #3f51b5;
 }
 
 .controls-panel {
-    background-color: #fff;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    flex-grow: 1; /* Allow controls to fill remaining space */
-    overflow-y: auto; /* Enable vertical scrolling */
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 10px;
+  background-color: #fff;
 }
 
-.form-section {
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 1px dashed #eee;
+.control-group {
+  margin-bottom: 15px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background-color: #f9f9f9;
 }
 
-.form-section:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
+.control-group h3 {
+  margin-top: 0;
+  color: #3f51b5;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
 }
 
-button, input[type="text"], input[type="time"], select {
-    padding: 8px;
-    margin: 5px 2px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 1em;
-    vertical-align: middle;
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+input[type="text"],
+input[type="time"],
+input[type="number"],
+select {
+  width: calc(100% - 12px);
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
 }
 
 button {
-    background-color: #5C6BC0;
-    color: white;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 15px;
+  margin: 5px 2px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
 }
 
-button:hover:not(:disabled) {
-    background-color: #3F51B5;
+button:hover {
+  background-color: #45a049;
 }
 
-button:disabled {
+button.danger {
+  background-color: #f44336;
+}
+button.danger:hover {
+  background-color: #da190b;
+}
+button.secondary {
+    background-color: #007bff;
+}
+button.secondary:hover {
+    background-color: #0056b3;
+}
+
+
+#stopsList, #trackingQueueDisplay {
+  list-style-type: none;
+  padding: 0;
+}
+
+#stopsList li, #trackingQueueDisplay li {
+  background-color: #e9e9e9;
+  padding: 8px;
+  margin-bottom: 5px;
+  border-radius: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#stopsList button {
+    padding: 3px 6px;
+    font-size: 0.8em;
+}
+
+.info-display {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+}
+
+.info-display p {
+  margin: 5px 0;
+}
+
+.manual-controls button {
+    background-color: #ff9800;
+}
+.manual-controls button:hover {
+    background-color: #e68a00;
+}
+.manual-controls button:disabled {
     background-color: #ccc;
     cursor: not-allowed;
 }
 
-input[type="text"], input[type="time"], select {
-    display: inline-block; /* Change to inline-block */
-    width: auto; /* Allow width to be determined by content/flex */
-    max-width: calc(100% - 10px); /* Prevent overflow */
-}
-
-#route-creation-controls input[type="text"],
-#start-end-details input[type="text"],
-#start-end-details input[type="time"],
-#intermediate-stop-placeholder input[type="text"],
-#intermediate-stop-placeholder input[type="time"] {
-    width: auto; /* Allow width to adjust */
-    margin-right: 5px;
-}
-
-#route-creation-controls input[type="text"] {
-     width: calc(100% - 10px);
-     display: block;
-     margin-bottom: 10px;
-}
-
-#start-point-info, #end-point-info, #intermediate-stop-placeholder {
-    background-color: #e8eaf6;
-    padding: 8px;
-    border-radius: 4px;
-    margin-bottom: 10px;
-}
-
-#start-point-info span, #end-point-info span, #intermediate-stop-placeholder span {
-    font-weight: bold;
-    margin-right: 5px;
-}
-
-#stop-list {
-    list-style: none;
-    padding: 0;
-    margin-top: 10px;
-}
-
-#stop-list li {
-    background-color: #f5f5f5;
-    padding: 8px;
-    margin-bottom: 5px;
-    border-radius: 4px;
-    border: 1px solid #eee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-#stop-list li button {
-    padding: 3px 8px;
-    font-size: 0.9em;
-    background-color: #e57373;
-}
-
-#stop-list li button:hover:not(:disabled) {
-     background-color: #ef5350;
-}
-
-#tracking-queue-list {
-    list-style: disc;
-    padding-left: 20px;
-}
-
-#tracking-queue-list li {
-    margin-bottom: 5px;
-}
-
-#tracking-info {
-    background-color: #e8f5e9;
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid #c8e6c9;
-}
-
-#tracking-info p {
-    margin: 5px 0;
-}
-
-#time-difference {
-    color: #d32f2f; /* Red for delay */
-}
-
-#time-difference::before {
-     content: "+";
-}
-#time-difference[data-delay="-"]::before {
-     content: "-";
-}
-#time-difference[data-delay="0"] {
-     color: #388e3c; /* Green for on time */
-}
-#time-difference[data-delay="0"]::before {
-     content: "+"; /* Still show +00:00 */
-}
-
-
-#manual-control-buttons button {
-    margin-top: 5px;
-    width: 48%; /* Make buttons share width */
-}
-
-/* Leaflet custom icon styling */
-.leaflet-marker-icon {
-    background-color: transparent;
-    border: none;
-}
-
-.leaflet-div-icon {
-    background-color: #303F9F;
-    color: white;
-    border-radius: 50%;
-    width: 20px !important;
-    height: 20px !important;
-    line-height: 20px !important;
-    text-align: center;
-    font-weight: bold;
-    font-size: 0.8em;
-    border: 1px solid #fff;
-    box-shadow: 0 0 5px rgba(0,0,0,0.5);
-}
-
-.leaflet-div-icon.start-icon { background-color: #4CAF50; } /* Green for Start */
-.leaflet-div-icon.end-icon { background-color: #F44336; } /* Red for End */
-.leaflet-div-icon.bus-icon { background-color: #FFEB3B; color: #333; } /* Yellow for Bus */
-
-
 /* Responsive adjustments */
-@media (min-width: 600px) {
-    .container {
-        padding: 20px;
-    }
-    .map {
-        height: 400px; /* Larger map on wider screens */
-    }
+@media (min-width: 768px) {
+  body {
+    flex-direction: row;
+  }
+  #map {
+    height: 100vh;
+    width: 60%; /* Mapa más grande en escritorio */
+    border-bottom: none;
+    border-right: 2px solid #3f51b5;
+  }
+  .controls-panel {
+    width: 40%;
+  }
 }
