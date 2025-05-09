@@ -6,6 +6,12 @@ document.addEventListener('DOMContentLoaded', () => {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
+    // Ajuste para asegurar que el mapa se renderice correctamente después de que el DOM y CSS se asienten.
+    setTimeout(() => {
+        map.invalidateSize();
+    }, 100);
+
+
     // --- Constants ---
     const PROXIMITY_THRESHOLD_METERS = 50;
     const GEOFENCE_RADIUS_METERS = 100;
@@ -335,19 +341,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentRoute.autoCalcTimes || !currentRoute.startPoint || !currentRoute.endPoint || 
             !currentRoute.startPoint.departureTime || !currentRoute.endPoint.arrivalTime ||
             currentRoute.intermediateStops.length === 0) {
-            // For intermediates, if autoCalc is on but they were manually set, keep them unless recalculated
-            // This function assumes it should overwrite intermediate times if autoCalc is ON.
-            // If times are manually set, then autoCalc is OFF, this won't run.
-            // If autoCalc ON and no intermediates, nothing to do.
-            // If autoCalc ON and intermediates exist, they will be recalculated.
-            // Ensure existing intermediate stops have their times reset if they are to be recalculated.
             if (currentRoute.autoCalcTimes) {
                  currentRoute.intermediateStops.forEach(stop => {
-                    stop.arrivalTime = ''; // Clear to signify they need recalc or manual input if autoCalc gets turned off
+                    stop.arrivalTime = ''; 
                     stop.departureTime = '';
                 });
             }
-            renderRouteEditor(); // Re-render to show cleared times if needed
+            renderRouteEditor(); 
             return;
         }
 
@@ -356,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!startDateTime || !endDateTime || endDateTime <= startDateTime) {
             updateAppStatus('Hora de inicio debe ser anterior a hora de fin para cálculo automático.', true);
-            currentRoute.intermediateStops.forEach(stop => { // Clear times as they are invalid
+            currentRoute.intermediateStops.forEach(stop => { 
                 stop.arrivalTime = '';
                 stop.departureTime = '';
             });
@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let segmentDistances = [];
 
         for (let i = 0; i < allStops.length - 1; i++) {
-            if (!allStops[i] || !allStops[i+1] || !allStops[i].lat || !allStops[i+1].lat) { // Check for valid points
+            if (!allStops[i] || !allStops[i+1] || !allStops[i].lat || !allStops[i+1].lat) { 
                 updateAppStatus('Algunos puntos de la ruta no tienen coordenadas.', true);
                 return;
             }
@@ -382,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (totalPathDistance === 0 && currentRoute.intermediateStops.length > 0) {
              updateAppStatus('Distancia total de ruta es cero, no se pueden calcular tiempos proporcionales.', true);
-             currentRoute.intermediateStops.forEach(stop => { // Clear times
+             currentRoute.intermediateStops.forEach(stop => { 
                 stop.arrivalTime = '';
                 stop.departureTime = '';
             });
@@ -392,17 +392,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let cumulativeDistance = 0;
         currentRoute.intermediateStops.forEach((stop, index) => {
-            // Distance to this intermediate stop is sum of segments up to it
-            // segmentDistances[0] is start to interm1
-            // segmentDistances[index] is from previous stop (or start) to this intermediate stop.
-            cumulativeDistance += segmentDistances[index]; // index refers to segment leading to this intermediate stop
+            cumulativeDistance += segmentDistances[index]; 
             
             const proportionOfDistance = totalPathDistance > 0 ? (cumulativeDistance / totalPathDistance) : 0;
             const timeOffsetMs = proportionOfDistance * totalDurationMs;
             const arrivalTimeAtStop = new Date(startDateTime.getTime() + timeOffsetMs);
             
             stop.arrivalTime = formatTimeForInput(arrivalTimeAtStop);
-            stop.departureTime = stop.arrivalTime; // As per requirement
+            stop.departureTime = stop.arrivalTime; 
         });
         renderRouteEditor();
     }
@@ -464,14 +461,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         currentRoute.name = name;
-        // Ensure names and times from inputs are part of the currentRoute object
         currentRoute.startPoint.name = startPointNameInput.value;
         currentRoute.startPoint.departureTime = startPointTimeInput.value;
         currentRoute.endPoint.name = endPointNameInput.value;
         currentRoute.endPoint.arrivalTime = endPointTimeInput.value;
         currentRoute.autoCalcTimes = autoCalcTimesCheckbox.checked;
 
-        savedRoutes[name] = JSON.parse(JSON.stringify(currentRoute)); // Deep copy
+        savedRoutes[name] = JSON.parse(JSON.stringify(currentRoute)); 
         saveRoutesToStorage();
         populateRouteDropdowns();
         updateAppStatus(`Ruta "${name}" guardada.`);
@@ -488,9 +484,8 @@ document.addEventListener('DOMContentLoaded', () => {
             updateAppStatus('Selecciona una ruta válida para cargar.', true);
             return;
         }
-        currentRoute = JSON.parse(JSON.stringify(savedRoutes[routeName])); // Deep copy
+        currentRoute = JSON.parse(JSON.stringify(savedRoutes[routeName])); 
         
-        // Populate editor fields
         routeNameInput.value = currentRoute.name;
         startPointNameInput.value = currentRoute.startPoint.name || '';
         startPointTimeInput.value = currentRoute.startPoint.departureTime || '';
@@ -512,7 +507,6 @@ document.addEventListener('DOMContentLoaded', () => {
             delete savedRoutes[routeName];
             saveRoutesToStorage();
             populateRouteDropdowns();
-            // If deleted route was in tracking queue, remove it
             trackingQueue = trackingQueue.filter(rName => rName !== routeName);
             saveTrackingQueueToStorage();
             renderTrackingQueue();
@@ -567,7 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Tracking Functionality ---
     function getFlatStopsForRoute(routeObject, routeDate = new Date()) {
         const stops = [];
-        const today = routeDate; // Base date for time parsing
+        const today = routeDate; 
 
         if (!routeObject || !routeObject.startPoint || !routeObject.endPoint) return [];
 
@@ -576,7 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'start',
             lat: routeObject.startPoint.lat,
             lng: routeObject.startPoint.lng,
-            arrivalTime: parseTimeToTimestamp(routeObject.startPoint.departureTime, today), // Arrival at start is same as departure
+            arrivalTime: parseTimeToTimestamp(routeObject.startPoint.departureTime, today), 
             departureTime: parseTimeToTimestamp(routeObject.startPoint.departureTime, today)
         });
 
@@ -597,9 +591,9 @@ document.addEventListener('DOMContentLoaded', () => {
             lat: routeObject.endPoint.lat,
             lng: routeObject.endPoint.lng,
             arrivalTime: parseTimeToTimestamp(routeObject.endPoint.arrivalTime, today),
-            departureTime: parseTimeToTimestamp(routeObject.endPoint.arrivalTime, today) // Departure from end is same as arrival
+            departureTime: parseTimeToTimestamp(routeObject.endPoint.arrivalTime, today) 
         });
-        return stops.filter(s => s.arrivalTime && s.departureTime); // Ensure valid stops
+        return stops.filter(s => s.arrivalTime && s.departureTime); 
     }
     
     function startTracking() {
@@ -627,8 +621,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
         
-        trackingUpdateIntervalId = setInterval(updateTrackingStatusInLocalStorage, 3000); // Update localStorage every 3s
-        timeDiffIntervalId = setInterval(calculateTimeDifference, 1000); // Update time diff every 1s
+        trackingUpdateIntervalId = setInterval(updateTrackingStatusInLocalStorage, 3000); 
+        timeDiffIntervalId = setInterval(calculateTimeDifference, 1000); 
         updateAppStatus('Seguimiento iniciado.');
     }
 
@@ -648,14 +642,13 @@ document.addEventListener('DOMContentLoaded', () => {
         startTrackingButton.disabled = trackingQueue.length === 0;
         stopTrackingButton.disabled = true;
         manualModeCheckbox.disabled = true;
-        manualModeCheckbox.checked = false; // Reset manual mode
+        manualModeCheckbox.checked = false; 
         toggleManualControls(false);
 
         activeRouteNameDisplay.textContent = '-';
         nextStopInfoDisplay.textContent = '-';
         timeDifferenceInfoDisplay.textContent = '-';
         
-        // Save final tracking status
         const status = {
             isTracking: false,
             hasError: hasError,
@@ -686,24 +679,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         activeRouteFlatStops = getFlatStopsForRoute(routeData);
-        if (activeRouteFlatStops.length < 2) { // Needs at least start and end
+        if (activeRouteFlatStops.length < 2) { 
              updateAppStatus(`Error: Ruta "${routeName}" tiene datos inválidos (paradas/tiempos). Saltando.`, true);
              currentRouteIndexInQueue++;
              processNextRouteInQueue();
              return;
         }
 
-        currentTrackingStopIndex = -1; // Reset to "at start" for the new route
-        currentBusDelayOrAheadMillis = 0; // Reset delay
+        currentTrackingStopIndex = -1; 
+        currentBusDelayOrAheadMillis = 0; 
 
         activeRouteNameDisplay.textContent = routeName;
         drawActiveRouteOnMap(activeRouteFlatStops);
-        updateRealTimeInfoDisplay(); // Initial display for the new route
+        updateRealTimeInfoDisplay(); 
         updateAppStatus(`Iniciando seguimiento para ruta: ${routeName}`);
     }
 
     function drawActiveRouteOnMap(flatStops) {
-        clearActiveRouteFromMap(); // Clear previous if any
+        clearActiveRouteFromMap(); 
         
         const latlngs = flatStops.map(s => [s.lat, s.lng]);
         activeRoutePolyline = L.polyline(latlngs, { color: 'green', weight: 5 }).addTo(map);
@@ -712,7 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let icon;
             if (stop.type === 'start') icon = createCustomIcon('I', 'start-icon');
             else if (stop.type === 'end') icon = createCustomIcon('F', 'end-icon');
-            else icon = createCustomIcon(index, 'intermediate-icon'); // Using flat index (0=start, 1=interm1...)
+            else icon = createCustomIcon(index, 'intermediate-icon'); 
             
             const marker = L.marker([stop.lat, stop.lng], { icon })
                 .bindPopup(`${stop.name} (${stop.type})<br>Prog: ${formatTimeFromTimestamp(stop.arrivalTime)}`)
@@ -720,7 +713,6 @@ document.addEventListener('DOMContentLoaded', () => {
             activeRouteStopMarkers.push(marker);
         });
         
-        // Geofences for start and end of the active route
         const startPoint = flatStops[0];
         const endPoint = flatStops[flatStops.length - 1];
         startGeofenceCircle = L.circle([startPoint.lat, startPoint.lng], {
@@ -770,9 +762,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!manualModeCheckbox.checked) {
             handleAutomaticAdvancement(lastKnownPosition);
         }
-        // calculateTimeDifference() is called by its own interval
-        updateRealTimeInfoDisplay(); // To refresh next stop info if it changed
-        updateTrackingStatusInLocalStorage(); // Update immediately on GPS update
+        updateRealTimeInfoDisplay(); 
+        updateTrackingStatusInLocalStorage(); 
     }
 
     function handleGpsError(error) {
@@ -783,20 +774,16 @@ document.addEventListener('DOMContentLoaded', () => {
             case error.TIMEOUT: reason = "Timeout obteniendo posición GPS."; break;
         }
         updateAppStatus(`Error de GPS: ${reason}`, true);
-        // Potentially stop tracking or notify user critical error
-        // For now, just log and update status. isTracking remains true unless manually stopped.
-        // The "hasError" flag in localStorage status will be set.
         localStorage.setItem(LOCALSTORAGE_STATUS_KEY, JSON.stringify({
-            isTracking: true, // still trying
+            isTracking: true, 
             hasError: true,
             errorReason: reason,
             lastUpdateTime: Date.now(),
-             // include other relevant fields if available
             routeName: activeRouteNameDisplay.textContent,
             currentRouteIndexInQueue,
             trackingQueueNames: trackingQueue,
             currentStopIndexFromWhichDeparted: currentTrackingStopIndex,
-            nextStopIndexTowardsWhichHeading: currentTrackingStopIndex + 1, // Best guess
+            nextStopIndexTowardsWhichHeading: currentTrackingStopIndex + 1, 
             currentBusDelayOrAheadMillis,
             lastKnownPosition,
             routeStops: activeRouteFlatStops,
@@ -813,13 +800,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = Date.now();
         let scheduledTimeAtCurrentPoint;
 
-        if (currentTrackingStopIndex === -1) { // At start point, before departure
+        if (currentTrackingStopIndex === -1) { 
             const scheduledDepartureTime = activeRouteFlatStops[0].departureTime;
-            scheduledTimeAtCurrentPoint = scheduledDepartureTime; // Comparing against scheduled departure
-             // currentBusDelayOrAheadMillis = scheduledDepartureTime - now; // Positive if bus is early for departure.
-        } else { // En route
-            if (currentTrackingStopIndex >= activeRouteFlatStops.length - 1) { // Arrived at final stop or beyond
-                currentBusDelayOrAheadMillis = 0; // Or calculate based on final arrival
+            scheduledTimeAtCurrentPoint = scheduledDepartureTime; 
+        } else { 
+            if (currentTrackingStopIndex >= activeRouteFlatStops.length - 1) { 
+                currentBusDelayOrAheadMillis = 0; 
                 timeDifferenceInfoDisplay.textContent = 'En Destino';
                 return;
             }
@@ -831,8 +817,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const scheduledTimeAtNextStop = nextStop.arrivalTime;
             const scheduledLegDuration = scheduledTimeAtNextStop - scheduledTimeAtPrevStop;
 
-            if (scheduledLegDuration <= 0) { // Should not happen with valid data
-                 currentBusDelayOrAheadMillis = 0; // Or some error indicator
+            if (scheduledLegDuration <= 0) { 
+                 currentBusDelayOrAheadMillis = 0; 
                  timeDifferenceInfoDisplay.textContent = 'Error Tiempos';
                  return;
             }
@@ -843,16 +829,15 @@ document.addEventListener('DOMContentLoaded', () => {
             let fractionOfLegCoveredByDistance = 0;
             if (distPrevToNext > 0) {
                 fractionOfLegCoveredByDistance = Math.min(1, Math.max(0, distPrevToCurrent / distPrevToNext));
-            } else if (distPrevToCurrent > 0) { // On top of prevStop, but nextStop is same loc
-                 fractionOfLegCoveredByDistance = 0; // No distance to cover
+            } else if (distPrevToCurrent > 0) { 
+                 fractionOfLegCoveredByDistance = 0; 
             }
-
 
             const scheduledTimeSpentOnLeg = fractionOfLegCoveredByDistance * scheduledLegDuration;
             scheduledTimeAtCurrentPoint = scheduledTimeAtPrevStop + scheduledTimeSpentOnLeg;
         }
         
-        currentBusDelayOrAheadMillis = scheduledTimeAtCurrentPoint - now; // Positive means bus is ahead of schedule
+        currentBusDelayOrAheadMillis = scheduledTimeAtCurrentPoint - now; 
         timeDifferenceInfoDisplay.textContent = formatDelayOrAhead(currentBusDelayOrAheadMillis);
     }
     
@@ -863,8 +848,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let nextStopTargetIndex;
-        if (currentTrackingStopIndex === -1) { // At start
-            nextStopTargetIndex = 0; // The "next stop" is the start point itself, for departure
+        if (currentTrackingStopIndex === -1) { 
+            nextStopTargetIndex = 0; 
             const startPoint = activeRouteFlatStops[0];
             nextStopInfoDisplay.textContent = `Salida de ${startPoint.name} a las ${formatTimeFromTimestamp(startPoint.departureTime)}`;
         } else {
@@ -881,27 +866,23 @@ document.addEventListener('DOMContentLoaded', () => {
     function advanceToNextStop(manual = false) {
         if (!isTracking) return;
 
-        if (currentTrackingStopIndex < activeRouteFlatStops.length - 2) { // If current is not the second to last stop
+        if (currentTrackingStopIndex < activeRouteFlatStops.length - 2) { 
             currentTrackingStopIndex++;
-        } else if (currentTrackingStopIndex === activeRouteFlatStops.length - 2) { // If current is second to last, next is last
-            currentTrackingStopIndex++; // Now at last stop
-            // Reached final stop of current route. If manual, user presses "Next Stop" again to change route.
+        } else if (currentTrackingStopIndex === activeRouteFlatStops.length - 2) { 
+            currentTrackingStopIndex++; 
              if (manual) updateAppStatus('En la última parada. "Siguiente" pasará a la próxima ruta.');
-        } else if (currentTrackingStopIndex === activeRouteFlatStops.length - 1 && manual) { // At last stop, and "Next" pressed
+        } else if (currentTrackingStopIndex === activeRouteFlatStops.length - 1 && manual) { 
             currentRouteIndexInQueue++;
-            processNextRouteInQueue(); // This will reset currentTrackingStopIndex to -1 for the new route
-            return; // Return early as route has changed
-        } else { // Already at or past last stop, or invalid state
-            if (!manual) { // Auto mode tried to advance past end, should be caught by geofence logic
+            processNextRouteInQueue(); 
+            return; 
+        } else { 
+            if (!manual) { 
                 currentRouteIndexInQueue++;
                 processNextRouteInQueue();
                 return;
             }
-            // If manual and no more routes, do nothing further or indicate end of all tracking.
             if (currentRouteIndexInQueue >= trackingQueue.length -1) {
                 updateAppStatus('Fin de todas las rutas en cola.');
-                // Optionally stop tracking if manual and at very end.
-                // stopTracking();
                 return;
             }
         }
@@ -910,12 +891,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (manual) updateAppStatus(`Avance manual a parada (índice ${currentTrackingStopIndex}).`);
     }
 
-    function advanceToPreviousStop() { // Only for manual mode
+    function advanceToPreviousStop() { 
         if (!isTracking || !manualModeCheckbox.checked) return;
         if (currentTrackingStopIndex > -1) {
             currentTrackingStopIndex--;
         } else {
-            // TODO: Go to previous route's last stop? For now, just stay at -1 of current.
             updateAppStatus('Ya en el inicio de la ruta actual.');
             return;
         }
@@ -930,44 +910,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentLat = currentPos.lat;
         const currentLng = currentPos.lng;
 
-        // 1. Check for exiting Start Geofence (if at start)
         if (currentTrackingStopIndex === -1) {
             const startPoint = activeRouteFlatStops[0];
             const distFromStart = calculateDistance(currentLat, currentLng, startPoint.lat, startPoint.lng);
             if (distFromStart > GEOFENCE_RADIUS_METERS) {
                 updateAppStatus('Saliendo de geofence de inicio.');
-                advanceToNextStop(); // Moves currentTrackingStopIndex from -1 to 0
+                advanceToNextStop(); 
             }
-            return; // Don't check other conditions if just handled start
+            return; 
         }
-
-        // 2. Check for entering End Geofence (transition to next route)
+        
         const endPoint = activeRouteFlatStops[activeRouteFlatStops.length - 1];
-        const distToEnd = calculateDistance(currentLat, currentLng, endPoint.lat, endPoint.lng);
         
-        // Only transition if we are heading towards the end point or are very close to it.
-        // i.e., currentTrackingStopIndex is for the leg leading to the end point.
-        if (currentTrackingStopIndex === activeRouteFlatStops.length - 2 && distToEnd <= PROXIMITY_THRESHOLD_METERS) {
-             // This means we arrived at the stop *before* the end stop, and now are close to end stop.
-             // This logic needs to be careful. If we are at stop N-2, next target is N-1 (end).
-             // If distToEnd < GEOFENCE_RADIUS and we are on the last leg (or at the last stop)
-        }
-
-        // Refined logic for end geofence and intermediate stops:
-        // currentTrackingStopIndex is the index of the stop WE DEPARTED FROM.
-        // So, nextStopTargetIndex = currentTrackingStopIndex + 1.
-        
-        if (currentTrackingStopIndex >= activeRouteFlatStops.length -1) { // Already at/past final stop for this route
-            if (distToEnd <= GEOFENCE_RADIUS_METERS) { // Still within end geofence or re-entered
+        if (currentTrackingStopIndex >= activeRouteFlatStops.length -1) { 
+            if (calculateDistance(currentLat, currentLng, endPoint.lat, endPoint.lng) <= GEOFENCE_RADIUS_METERS) { 
                 updateAppStatus('En geofence de fin de ruta. Transicionando...');
                 currentRouteIndexInQueue++;
-                processNextRouteInQueue(); // This will reset currentTrackingStopIndex to -1
+                processNextRouteInQueue(); 
             }
             return;
         }
         
         const nextStopTargetIndex = currentTrackingStopIndex + 1;
-        if (nextStopTargetIndex >= activeRouteFlatStops.length) { // Should not happen if previous check is correct
+        if (nextStopTargetIndex >= activeRouteFlatStops.length) { 
              updateAppStatus('Índice de próxima parada fuera de rango.', true);
              return;
         }
@@ -976,21 +941,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const distToNextStop = calculateDistance(currentLat, currentLng, nextStopData.lat, nextStopData.lng);
 
         if (distToNextStop <= PROXIMITY_THRESHOLD_METERS) {
-            if (nextStopTargetIndex === activeRouteFlatStops.length - 1) { // Reached the Final Stop
-                updateAppStatus(`Llegando a parada final: ${nextStopData.name}. Dentro de geofence de fin.`);
-                advanceToNextStop(); // currentTrackingStopIndex becomes index of final stop
-                // Now, check if we are indeed inside the larger geofence of the final stop for route transition
-                // This check will happen on the *next* GPS update, or we can force it.
-                // If distToEnd (calculated above) <= GEOFENCE_RADIUS_METERS, then transition.
+            if (nextStopTargetIndex === activeRouteFlatStops.length - 1) { 
+                updateAppStatus(`Llegando a parada final: ${nextStopData.name}.`);
+                advanceToNextStop(); 
                  if (calculateDistance(currentLat, currentLng, endPoint.lat, endPoint.lng) <= GEOFENCE_RADIUS_METERS) {
                     updateAppStatus('Dentro de geofence de fin de ruta. Transicionando...');
                     currentRouteIndexInQueue++;
                     processNextRouteInQueue();
                  }
 
-            } else { // Reached an Intermediate Stop
+            } else { 
                 updateAppStatus(`Llegando a parada intermedia: ${nextStopData.name}`);
-                advanceToNextStop(); // Advances currentTrackingStopIndex
+                advanceToNextStop(); 
             }
         }
     }
@@ -999,22 +961,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isTracking || !lastKnownPosition || activeRouteFlatStops.length < 2) return;
     
         const currentPos = lastKnownPosition;
-    
-        // Option 1: Check if near any specific stop
+        
         for (let i = 0; i < activeRouteFlatStops.length; i++) {
             const stop = activeRouteFlatStops[i];
             if (calculateDistance(currentPos.lat, currentPos.lng, stop.lat, stop.lng) <= PROXIMITY_THRESHOLD_METERS) {
-                // If at a stop, currentTrackingStopIndex should be the index of this stop,
-                // meaning we are "at" it, or "just departed" it if it's not the end.
-                // If it's the start stop (i=0), currentTrackingStopIndex should be 0 if departed, or -1 if still at start.
-                // For simplicity, if at stop 'i', assume we are about to depart it or just did.
                 currentTrackingStopIndex = i; 
-                // If we are at the very first stop (index 0) and very close to it, it could mean we haven't "left" the start geofence.
-                // However, findAndSetCurrentLeg is usually called when resuming auto mode, implying we are already on the way.
-                if (i === 0 && calculateDistance(currentPos.lat, currentPos.lng, activeRouteFlatStops[0].lat, activeRouteFlatStops[0].lng) <= GEOFENCE_RADIUS_METERS && activeRouteFlatStops[0].departureTime > Date.now()) {
-                    // If very close to start, and before departure time, maybe consider it -1
-                    // This needs careful thought. For now, if near stop i, set index to i.
-                }
                  updateAppStatus(`Re-sincronizado: Cerca de parada ${activeRouteFlatStops[i].name}. Índice actual: ${currentTrackingStopIndex}`);
                 updateRealTimeInfoDisplay();
                 updateTrackingStatusInLocalStorage();
@@ -1022,54 +973,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     
-        // Option 2: Find closest segment (more complex, simplified version here)
-        // "Priorizar encontrar la parada más cercana adelante en el orden de la ruta."
-        // Iterate forward from current known stop index (or 0).
-        // Find the first segment (A->B) for which current position is "past A" but "not significantly past B".
-        let bestFitLegStartIndex = -1;
-        let minDistanceToProjectedPoint = Infinity;
-
-        for (let i = 0; i < activeRouteFlatStops.length - 1; i++) {
-            const p1 = activeRouteFlatStops[i];       // Start of segment
-            const p2 = activeRouteFlatStops[i + 1];   // End of segment
-    
-            // Simplified: check if current position is "between" p1 and p2 by proximity
-            // This doesn't properly project to segment but gives a rough idea.
-            // A more robust method projects currentPos onto the line defined by p1-p2.
-            // Let's find the leg where our current position is "most likely" on, by checking distances to endpoints of segments.
-            const distToP1 = calculateDistance(currentPos.lat, currentPos.lng, p1.lat, p1.lng);
-            const distToP2 = calculateDistance(currentPos.lat, currentPos.lng, p2.lat, p2.lng);
-            const distP1P2 = calculateDistance(p1.lat, p1.lng, p2.lat, p2.lng);
-
-            // Basic check: if sum of distances to endpoints is close to segment length, we are near the segment.
-            if (Math.abs(distToP1 + distToP2 - distP1P2) < distP1P2 * 0.5) { // Within 50% margin, crude
-                 // Heuristic: if we are closer to P1 than P2 on this "good" segment,
-                 // assume we are on this segment, having departed P1.
-                 // If there are multiple such segments, we need to pick one.
-                 // The prompt asks to prioritize "adelante en la ruta".
-                 // This means if currentTrackingStopIndex was, say, 2, we'd start looking from leg 2->3.
-
-                 // Simpler: find the *next stop* we haven't passed yet.
-                 // Find i such that currentPos is before stop i+1, but after stop i.
-                 // This implies currentTrackingStopIndex = i.
-                 // A very simple approach: Find the stop we've most recently passed.
-                 // Assume currentTrackingStopIndex is the previously set one.
-                 // Iterate from currentTrackingStopIndex + 1. Find the first stop ahead that we are NOT yet close to.
-                 // The stop before that is our current departure point.
-
-                 // Let's use the "closest segment" idea based on projection (conceptual, not fully implemented here for brevity)
-                 // For now, a heuristic: find the segment start point (p1) that is closest to current position,
-                 // but current position is "past" it in the direction of p2.
-                 // This is still tricky without full projection.
-                 
-                 // Fallback / Simplification for this exercise:
-                 // Find the stop `j` that the `currentPos` is closest to overall.
-                 // If `currentPos` is roughly "after" `j` (in route direction) or "at" `j`, then set `currentTrackingStopIndex = j`.
-                 // If `currentPos` is "before" `j`, then `currentTrackingStopIndex = j-1`.
-                 // This can be error-prone.
-            }
-        }
-        // Fallback: find the closest stop overall and assume we departed from it or are at it.
         let closestStopIndex = -1;
         let minDistToStop = Infinity;
         activeRouteFlatStops.forEach((stop, index) => {
@@ -1081,43 +984,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         if (closestStopIndex !== -1) {
-             // If we are very close to this stop, it's likely our current stop.
-             // If not very close, we need to determine if we are before or after it along the path.
-             // For simplicity now, if we are forced to resync and not near any stop,
-             // we assume we've departed from the overall closest stop.
-             // This isn't perfect as "closest" might be backwards.
-             // "Prioritize adelante":
-             // Try to find the *last stop passed*. Iterate stops from start.
-             // If distance to stop i+1 is much larger than to stop i, and we are past i.
-             let lastPassedStopIndex = -1;
-             for (let i = 0; i < activeRouteFlatStops.length -1; i++) {
-                 const stopA = activeRouteFlatStops[i];
-                 const stopB = activeRouteFlatStops[i+1];
-                 // Crude check: if current position is further from A than B is from A, but closer to B.
-                 const distACurr = calculateDistance(stopA.lat, stopA.lng, currentPos.lat, currentPos.lng);
-                 const distBCurr = calculateDistance(stopB.lat, stopB.lng, currentPos.lat, currentPos.lng);
-                 const distAB = calculateDistance(stopA.lat, stopA.lng, stopB.lat, stopB.lng);
-
-                 if (distACurr < distAB && distBCurr < distAB) { // Roughly between A and B
-                     lastPassedStopIndex = i; // We are on leg A->B
-                 } else if (distACurr > distAB && distBCurr < distACurr) { // Potentially past A, heading to B or past B
-                     // This logic gets complicated quickly.
-                 }
-             }
-             // If no clear segment, use the `closestStopIndex` and hope it's mostly forward.
-             // A better `findAndSetCurrentLeg` would be more involved with vector math.
-             // For now, if not near a stop, and we are forced to sync:
-             // Take the closest stop. Assume we are heading from it if it's not the last one.
              if (closestStopIndex < activeRouteFlatStops.length -1) {
                 currentTrackingStopIndex = closestStopIndex;
-             } else { // Closest to last stop
-                currentTrackingStopIndex = activeRouteFlatStops.length -1; // At last stop
+             } else { 
+                currentTrackingStopIndex = activeRouteFlatStops.length -1; 
              }
-
              updateAppStatus(`Re-sincronizado (heurística): Índice ${currentTrackingStopIndex} (${activeRouteFlatStops[currentTrackingStopIndex].name}).`);
         } else {
             updateAppStatus('No se pudo re-sincronizar la posición en la ruta.', true);
-             // Keep currentTrackingStopIndex as is, or reset to -1?
         }
         updateRealTimeInfoDisplay();
         updateTrackingStatusInLocalStorage();
@@ -1127,7 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
     manualModeCheckbox.addEventListener('change', (e) => {
         const isManual = e.target.checked;
         toggleManualControls(isManual);
-        if (!isManual && isTracking) { // Switched from Manual to Auto
+        if (!isManual && isTracking) { 
             updateAppStatus('Cambiado a modo automático. Re-sincronizando...');
             findAndSetCurrentLeg();
         } else if (isManual) {
@@ -1140,26 +1014,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     prevStopButton.addEventListener('click', advanceToPreviousStop);
-    nextStopButton.addEventListener('click', ()_=> advanceToNextStop(true)); // Pass true for manual
+    nextStopButton.addEventListener('click', ()_=> advanceToNextStop(true)); 
 
 
     // --- localStorage Communication ---
     function updateTrackingStatusInLocalStorage() {
-        if (!isTracking && !localStorage.getItem(LOCALSTORAGE_STATUS_KEY)) { // If never tracked, or explicitly stopped
+        if (!isTracking && !localStorage.getItem(LOCALSTORAGE_STATUS_KEY)) { 
             const initialStatus = { isTracking: false, hasError: false, errorReason: '', lastUpdateTime: Date.now() };
             localStorage.setItem(LOCALSTORAGE_STATUS_KEY, JSON.stringify(initialStatus));
             return;
         }
-        if (!isTracking) { // if tracking was stopped, the stopTracking function already saved.
+        if (!isTracking) { 
             return;
         }
         
-        // If tracking, but essential data missing (e.g., before first GPS fix or route load)
         if (activeRouteFlatStops.length === 0 || currentRouteIndexInQueue < 0) {
-            // Save a minimal "tracking but waiting" status
             const waitingStatus = {
                 isTracking: true,
-                hasError: false, // Or true if specific error occurred
+                hasError: false, 
                 errorReason: '',
                 routeName: 'Cargando...',
                 currentRouteIndexInQueue,
@@ -1180,17 +1052,17 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const status = {
             isTracking: true,
-            hasError: false, // Assuming no GPS error for this specific update cycle
+            hasError: false, 
             errorReason: '',
             routeName: routeName,
             currentRouteIndexInQueue: currentRouteIndexInQueue,
             trackingQueueNames: trackingQueue,
             currentStopIndexFromWhichDeparted: currentTrackingStopIndex,
-            nextStopIndexTowardsWhichHeading: nextStopIdx < activeRouteFlatStops.length ? nextStopIdx : -1, // -1 if at/past end
+            nextStopIndexTowardsWhichHeading: nextStopIdx < activeRouteFlatStops.length ? nextStopIdx : -1, 
             currentBusDelayOrAheadMillis: currentBusDelayOrAheadMillis,
             lastKnownPosition: lastKnownPosition,
             lastUpdateTime: Date.now(),
-            routeStops: activeRouteFlatStops, // Already has timestamps
+            routeStops: activeRouteFlatStops, 
         };
         localStorage.setItem(LOCALSTORAGE_STATUS_KEY, JSON.stringify(status));
     }
@@ -1217,12 +1089,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function initApp() {
         loadRoutesFromStorage();
         loadTrackingQueueFromStorage();
-        resetCurrentRoute(); // Initialize editor state
-        renderRouteEditor(); // Initial render of empty editor
+        resetCurrentRoute(); 
+        renderRouteEditor(); 
         registerServiceWorker();
-        // Check if there's an existing tracking status (e.g. app reloaded)
-        // For simplicity, this app starts fresh. A more robust PWA might try to resume.
-        updateTrackingStatusInLocalStorage(); // Set initial false state if not tracking
+        updateTrackingStatusInLocalStorage(); 
         
         startTrackingButton.addEventListener('click', startTracking);
         stopTrackingButton.addEventListener('click', () => stopTracking(false,''));
