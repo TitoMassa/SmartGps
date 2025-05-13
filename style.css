@@ -3,75 +3,47 @@ body, html {
     padding: 0;
     width: 100%;
     height: 100%;
-    font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+    font-family: 'Consolas', 'Courier New', monospace;
     background-color: #000000;
     color: #FFFFFF;
-    overflow: hidden; /* Evitar scroll general */
+    overflow: hidden; /* Evita scroll en el body */
+}
+
+#app-container {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    height: 100%;
 }
 
 #map {
-    height: 55%; /* Ajusta según preferencia */
-    width: 100%;
-    background-color: #333; /* Placeholder color while map loads */
+    flex: 1; /* El mapa toma el espacio disponible */
+    min-height: 40vh; /* Mínimo 40% de la altura de la ventana */
+    background-color: #333; /* Color de fondo mientras carga el mapa */
 }
 
 #controls {
-    height: 45%; /* Ajusta según preferencia */
-    width: 100%;
-    overflow-y: auto;
+    flex-shrink: 0; /* Evita que los controles se encojan */
+    height: 60vh; /* Los controles toman el 60% de la altura */
+    overflow-y: auto; /* Scroll si el contenido excede */
     padding: 10px;
-    box-sizing: border-box;
-    background-color: #111111;
+    background-color: #1a1a1a;
     border-top: 2px solid #444;
 }
 
-.tabs {
-    display: flex;
-    margin-bottom: 10px;
-    flex-wrap: wrap; /* Para que los botones se ajusten en pantallas pequeñas */
+.panel {
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #444;
 }
-
-.tab-button {
-    padding: 8px 12px;
-    cursor: pointer;
-    background-color: #333;
-    color: #fff;
-    border: 1px solid #555;
+.panel:last-child {
     border-bottom: none;
-    margin-right: 5px;
-    font-family: inherit;
-    font-size: 0.9em;
 }
-
-.tab-button.active {
-    background-color: #111;
-    border-bottom: 1px solid #111; /* o color del fondo del control */
-}
-
-.tab-content {
-    display: none;
-    padding: 10px;
-    border: 1px solid #555;
-    border-top: none;
-    animation: fadeIn 0.5s;
-}
-
-.tab-content.active {
-    display: block;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
 
 h2, h3 {
-    color: #00BCD4; /* Cian brillante para títulos */
-    margin-top: 10px;
-    margin-bottom: 8px;
+    color: #00bcd4; /* Un color cian para los títulos */
+    margin-top: 5px;
+    margin-bottom: 10px;
 }
 
 .form-group {
@@ -80,116 +52,114 @@ h2, h3 {
 
 label {
     display: block;
-    margin-bottom: 5px;
+    margin-bottom: 3px;
     font-size: 0.9em;
 }
 
 input[type="text"],
 input[type="time"],
 select {
-    width: calc(100% - 22px); /* Ajustar para padding y border */
-    padding: 8px 10px;
-    background-color: #222;
+    width: calc(100% - 12px); /* Ajustar padding */
+    padding: 8px;
+    background-color: #333;
     color: #fff;
-    border: 1px solid #444;
-    border-radius: 3px;
-    font-family: inherit;
-    margin-bottom: 5px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    box-sizing: border-box;
 }
 input[type="checkbox"] {
     margin-right: 5px;
     vertical-align: middle;
 }
 
-
 button {
-    background-color: #007BFF; /* Azul */
+    background-color: #007bff; /* Azul */
     color: white;
-    padding: 10px 15px;
     border: none;
-    border-radius: 3px;
+    padding: 10px 15px;
+    margin: 5px 2px;
+    border-radius: 4px;
     cursor: pointer;
-    font-family: inherit;
-    margin-top: 5px;
-    margin-right: 5px;
+    font-family: 'Consolas', 'Courier New', monospace;
     font-size: 0.9em;
 }
 
 button:hover {
     background-color: #0056b3;
 }
+
 button:disabled {
     background-color: #555;
     cursor: not-allowed;
 }
 
-ul {
+#currentStopsList, #queuedRoutesList {
     list-style-type: none;
-    padding: 0;
+    padding-left: 0;
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #333;
+    padding: 5px;
 }
 
-ul li {
+#currentStopsList li, #queuedRoutesList li {
     background-color: #2a2a2a;
-    padding: 8px;
-    margin-bottom: 5px;
+    padding: 5px;
+    margin-bottom: 3px;
     border-radius: 3px;
     font-size: 0.85em;
+}
+
+/* Estilos para marcadores DivIcon */
+.custom-div-icon {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-}
-
-ul li button {
-    padding: 5px 8px;
-    font-size: 0.8em;
-    background-color: #dc3545; /* Rojo para borrar */
-}
-ul li button.load-btn {
-    background-color: #28a745; /* Verde para cargar */
-    margin-left: 5px;
-}
-
-
-#trackingInfo p {
-    margin: 5px 0;
-}
-
-#timeDeviation.adelantado {
-    color: #28a745; /* Verde */
     font-weight: bold;
-}
-
-#timeDeviation.atrasado {
-    color: #dc3545; /* Rojo */
-    font-weight: bold;
-}
-
-#timeDeviation.atiempo {
-    color: #FFFFFF; /* Blanco */
-    font-weight: bold;
-}
-
-/* Leaflet custom icons */
-.custom-icon-start, .custom-icon-end, .custom-icon-intermediate {
     color: white;
     border-radius: 50%;
-    width: 25px !important; /* Importante para sobreescribir Leaflet */
-    height: 25px !important;
+    width: 30px !important; /* Leaflet anula esto a veces, !important ayuda */
+    height: 30px !important;
+    font-size: 16px;
     text-align: center;
-    line-height: 25px;
-    font-weight: bold;
-    font-size: 14px;
-    border: 1px solid white;
+    line-height: 30px; /* Para centrar verticalmente el texto */
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
 }
 
-.custom-icon-driver {
-    background-color: #007BFF; /* Azul para el chofer */
-    color: white;
+.driver-icon {
+    background-color: #ffcc00 !important; /* Amarillo para el conductor */
+    border: 2px solid white;
     border-radius: 50%;
     width: 20px !important;
     height: 20px !important;
-    text-align: center;
-    line-height: 20px;
-    font-size: 12px;
-    border: 1px solid white;
+}
+.driver-icon::after { /* Un pequeño punto para indicar la dirección si tuviéramos heading */
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 5px solid #ffcc00;
+}
+
+
+#timeDeviation.positive {
+    color: #4CAF50; /* Verde */
+}
+
+#timeDeviation.negative {
+    color: #F44336; /* Rojo */
+}
+#timeDeviation.on-time {
+    color: #FFFFFF; /* Blanco */
+}
+
+/* Ocultar input de número en type=time para algunos navegadores */
+input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1); /* Hace el icono del calendario blanco */
 }
