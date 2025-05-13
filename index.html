@@ -480,6 +480,7 @@
         }
         
         function clearCurrentRoute() {
+            cancelEdit(); // Asegurarse de salir del modo edición
             routePoints.forEach(p => map.removeLayer(p.marker));
             routePoints = [];
             if (routeLine) map.removeLayer(routeLine);
@@ -708,6 +709,7 @@
         }
 
         function loadRoute() {
+            cancelEdit();
             const selectedRouteName = document.getElementById('savedRoutes').value;
             if (!selectedRouteName) {
                 alert("Selecciona una ruta para cargar.");
