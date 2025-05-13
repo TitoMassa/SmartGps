@@ -1145,20 +1145,27 @@
 
         function displayDeviation(deviationMillis) {
             const absMillis = Math.abs(deviationMillis);
+
             const totalSecondsValue = Math.floor(absMillis / 1000);
-            const displaySeconds = totalSecondsValue % 60; 
-            const totalMinutesValue = Math.floor(totalSecondsValue / 60); 
+            const displaySeconds = totalSecondsValue % 60; // Segundos a mostrar (0-59)
+
+            const totalMinutesValue = Math.floor(totalSecondsValue / 60); // Minutos totales (incluyendo horas convertidas)
+
             const sign = deviationMillis >= 0 ? "+" : "-";
-            const formattedDeviation = `${sign}${totalMinutesValue}:${String(displaySeconds).padStart(2, '0')}`;
+            
+            // Formatear los minutos totales para que siempre tengan al menos dos dígitos (ej. 08 en lugar de 8)
+            // y los segundos.
+            const formattedDeviation = `${sign}${String(totalMinutesValue).padStart(2, '0')}:${String(displaySeconds).padStart(2, '0')}`;
+
             const deviationDiv = document.getElementById('timeDeviation');
             deviationDiv.textContent = formattedDeviation;
 
             if (deviationMillis === 0) {
-                 deviationDiv.style.color = "#FFFFFF"; 
-            } else if (deviationMillis > 0) { 
-                deviationDiv.style.color = "#00FF00"; 
-            } else { 
-                deviationDiv.style.color = "#FF0000"; 
+                 deviationDiv.style.color = "#FFFFFF"; // White for on-time
+            } else if (deviationMillis > 0) { // Adelantado
+                deviationDiv.style.color = "#00FF00"; // Green
+            } else { // Atrasado
+                deviationDiv.style.color = "#FF0000"; // Red
             }
         }
 
