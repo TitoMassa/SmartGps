@@ -1,494 +1,1538 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Smart Move Pro</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin=""></script>
+
     <style>
+        /* Base Styles */
         body {
             margin: 0;
             padding: 0;
             font-family: Arial, sans-serif;
-            background-color: black;
-            color: white;
+            background-color: #1a1a1a; /* Dark background */
+            color: #ffffff; /* White text */
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden; /* Prevent body scroll */
         }
+
+        /* Main Layout */
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
         #map {
-            width: 100%;
-            height: 400px;
+            flex-grow: 1; /* Map takes available space */
+            height: 60vh; /* Initial height for map */
+            z-index: 0; /* Ensure controls are above map */
         }
-        .controls {
+
+        #controls {
+            background-color: #2a2a2a; /* Slightly lighter dark for controls */
             padding: 10px;
+            overflow-y: auto; /* Enable scrolling if controls content is too long */
+            height: 40vh; /* Initial height for controls */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 1; /* Ensure controls are above map */
         }
-        .route-list {
-            margin-top: 10px;
-        }
-        .route-item {
-            margin-bottom: 5px;
-        }
-        .deviation-positive {
-            color: green;
-        }
-        .deviation-negative {
-            color: red;
-        }
-        input[type="text"], input[type="time"], select {
-            background-color: #333;
-            color: white;
-            border: none;
-            padding: 5px;
-            margin-bottom: 5px;
-            width: 100%;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #555;
-            color: white;
-            border: none;
+
+        /* Section Styles */
+        .control-section {
+            background-color: #3a3a3a;
             padding: 10px;
-            cursor: pointer;
-            margin-top: 5px;
+            border-radius: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
-        button:hover {
-            background-color: #777;
+
+        .control-section h3 {
+            margin: 0 0 10px 0;
+            color: #eeeeee;
+            border-bottom: 1px solid #4a4a4a;
+            padding-bottom: 5px;
         }
+
+        /* Form & Input Styles */
         label {
             display: block;
             margin-bottom: 3px;
+            font-size: 0.9em;
+            color: #cccccc;
+        }
+
+        input[type="text"],
+        input[type="time"],
+        select {
+            width: calc(100% - 18px); /* Adjust for padding/border */
+            padding: 8px;
+            margin-bottom: 8px;
+            border: 1px solid #5a5a5a;
+            border-radius: 3px;
+            background-color: #4a4a4a;
+            color: #ffffff;
+            font-size: 1em;
+        }
+
+        input[type="checkbox"] {
+             margin-right: 5px;
+             vertical-align: middle;
+        }
+
+        button {
+            padding: 10px 15px;
+            background-color: #007bff; /* Blue */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #6a6a6a;
+            cursor: not-allowed;
+        }
+
+        /* List Styles */
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        li {
+            background-color: #4a4a4a;
+            border-bottom: 1px solid #5a5a5a;
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 3px;
+            font-size: 0.95em;
+        }
+
+        li strong {
+            color: #cccccc;
+        }
+
+        li.stop-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stop-item button {
+            padding: 3px 8px;
+            font-size: 0.8em;
+            background-color: #dc3545; /* Red */
+        }
+        .stop-item button:hover {
+             background-color: #c82333;
+        }
+
+        .queue-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+         .queue-item button {
+            padding: 3px 8px;
+            font-size: 0.8em;
+             background-color: #dc3545; /* Red */
+        }
+         .queue-item button:hover {
+             background-color: #c82333;
+        }
+
+        /* Info Display */
+        .info-display {
+            margin-top: 10px;
+            padding: 8px;
+            background-color: #4a4a4a;
+            border-radius: 3px;
+            font-size: 1.1em;
+            text-align: center;
+        }
+
+        .info-display strong {
+             color: #cccccc;
+        }
+
+        .deviation {
+            font-weight: bold;
+        }
+
+        .deviation.ahead {
+            color: #28a745; /* Green */
+        }
+
+        .deviation.behind {
+            color: #dc3545; /* Red */
+        }
+
+        /* Leaflet Custom Icons */
+        .leaflet-div-icon {
+            background-color: transparent;
+            border: none;
+            text-align: center;
+            font-weight: bold;
+            color: white;
+            font-size: 12px;
+            line-height: 20px; /* Match icon height */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .marker-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: #007bff; /* Default blue background */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .marker-icon.start { background-color: #ffc107; } /* Yellow */
+        .marker-icon.end { background-color: #dc3545; } /* Red */
+        .marker-icon.intermediate { background-color: #17a2b8; } /* Teal */
+        .marker-icon.driver { background-color: #28a745; } /* Green */
+
+
+         /* Responsive Adjustments (Optional, basic flex/grid handles most) */
+        @media (orientation: landscape) {
+             #map { height: 70vh; }
+             #controls { height: 30vh; }
         }
 
     </style>
 </head>
 <body>
+    <div id="app">
+        <div id="map"></div>
 
-    <div id="map"></div>
+        <div id="controls">
 
-    <div class="controls">
-        <h2>Smart Move Pro</h2>
+            <!-- Create Route Section -->
+            <div class="control-section">
+                <h3>Crear/Editar Ruta</h3>
+                <p>Click en el mapa para agregar paradas:</p>
+                <ul>
+                    <li>1er click: Inicio (obligatorio horario)</li>
+                    <li>2do click: Final (obligatorio horario)</li>
+                    <li>Clicks siguientes: Intermedias (horario opcional)</li>
+                </ul>
+                <label for="stop-name">Nombre de la Parada:</label>
+                <input type="text" id="stop-name" placeholder="Ej: Terminal Norte">
+                <label for="stop-time">Horario Programado (Opcional para Intermedias):</label>
+                <input type="time" id="stop-time">
+                 <div>
+                    <input type="checkbox" id="auto-calculate-times">
+                    <label for="auto-calculate-times" style="display:inline-block;">Calcular horarios automáticamente</label>
+                 </div>
+                <ul id="stop-list">
+                    <!-- Stops will be listed here -->
+                </ul>
+                <button id="clear-route-btn">Limpiar Ruta</button>
+            </div>
 
-        <h3>Crear Ruta</h3>
+            <!-- Save/Load/Delete Section -->
+             <div class="control-section">
+                <h3>Gestionar Rutas Guardadas</h3>
+                 <label for="route-name-save">Nombre para Guardar:</label>
+                 <input type="text" id="route-name-save" placeholder="Nombre de la Ruta">
+                <button id="save-route-btn">Guardar Ruta Actual</button>
+                <label for="route-select-load">Cargar/Eliminar Ruta:</label>
+                <select id="route-select-load">
+                    <option value="">-- Seleccione una ruta --</option>
+                    <!-- Saved routes will be populated here -->
+                </select>
+                <button id="load-route-btn" disabled>Cargar</button>
+                <button id="delete-route-btn" disabled>Eliminar</button>
+            </div>
 
-        <label for="routeName">Nombre de la Ruta:</label>
-        <input type="text" id="routeName" placeholder="Nombre">
+             <!-- Tracking Section -->
+            <div class="control-section">
+                <h3>Seguimiento en Tiempo Real</h3>
+                <div id="tracking-info" class="info-display" style="display: none;">
+                    <p>Próxima Parada: <strong id="next-stop-info">-</strong></p>
+                    <p>Velocidad: <strong id="current-speed">- km/h</strong></p>
+                    <p>Desvío Horario: <strong id="deviation-info" class="deviation">-</strong></p>
+                </div>
+                 <div>
+                    <input type="checkbox" id="manual-progression-checkbox">
+                    <label for="manual-progression-checkbox" style="display:inline-block;">Progresión manual de paradas</label>
+                 </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="start-tracking-btn" style="flex-grow: 1;">Iniciar Seguimiento</button>
+                    <button id="stop-tracking-btn" style="flex-grow: 1;" disabled>Detener Seguimiento</button>
+                </div>
+                <div id="manual-progression-controls" style="display: none; margin-top: 10px; display: flex; gap: 10px;">
+                     <button id="prev-stop-btn" disabled style="flex-grow: 1;">< Anterior</button>
+                     <button id="next-stop-btn" disabled style="flex-grow: 1;">Siguiente ></button>
+                </div>
+            </div>
 
-        <label for="calculateAutomatically">Calcular horarios automáticamente:</label>
-        <input type="checkbox" id="calculateAutomatically">
+            <!-- Route Queue Section -->
+             <div class="control-section">
+                <h3>Cola de Rutas</h3>
+                <label for="route-select-queue">Agregar ruta a la cola:</label>
+                 <select id="route-select-queue">
+                    <option value="">-- Seleccione una ruta --</option>
+                    <!-- Saved routes will be populated here -->
+                </select>
+                <button id="add-to-queue-btn" disabled>Agregar a Cola</button>
+                 <ul id="route-queue-list">
+                    <!-- Queue items will be listed here -->
+                 </ul>
+                 <button id="start-queue-btn" disabled>Iniciar Cola</button>
+            </div>
 
-        <button onclick="addStop('inicio')">Agregar Inicio</button>
-        <button onclick="addStop('final')">Agregar Final</button>
-        <button onclick="addStop('intermedia')">Agregar Parada Intermedia</button>
-        <button onclick="saveRoute()">Guardar Ruta</button>
-        <button onclick="clearRoute()">Limpiar Ruta</button>
-        <h3>Rutas Guardadas</h3>
-        <select id="savedRoutes" onchange="loadRoute()"></select>
-        <button onclick="deleteRoute()">Eliminar Ruta</button>
-        <button onclick="startTracking()">Iniciar Seguimiento</button>
-        <button onclick="stopTracking()">Detener Seguimiento</button>
+             <div style="text-align: center; font-size: 0.8em; color: #7a7a7a;">
+                Smart Move Pro v1.0
+            </div>
 
-        <label for="manualAdvance">Avance Manual:</label>
-        <input type="checkbox" id="manualAdvance">
-
-        <button onclick="previousStop()">Parada Anterior</button>
-        <button onclick="nextStop()">Parada Siguiente</button>
-        <button onclick="addToQueue()">Agregar a Cola</button>
-
-        <h3>Cola de Rutas</h3>
-        <ul id="routeQueue"></ul>
-
-        <h3>Información de Seguimiento</h3>
-        <p>Velocidad: <span id="speed">0</span> km/h</p>
-        <p>Desvío Horario: <span id="deviation" class="deviation-neutral">00:00</span></p>
-        <p>Próxima Parada: <span id="nextStopName">Ninguna</span></p>
+        </div>
     </div>
 
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZQXyr81+icx56cksOnOnuwV7+oWw="
+            crossorigin=""></script>
+
     <script>
+        document.addEventListener('DOMContentLoaded', () => {
 
-        var map = L.map('map').setView([-34.6037, -58.3816], 13); // Buenos Aires
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
+            // --- Global Variables ---
+            const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/'; // Public OSRM demo server
+            const CACHE_KEY_ROUTES = 'smartMoveRoutes';
+            const CACHE_KEY_ROUTE_NAMES = 'smartMoveRouteNames';
+            const CACHE_KEY_QUEUE = 'smartMoveQueue';
 
-        var route = [];
-        var routeLayer = L.layerGroup().addTo(map);
-        var currentPositionMarker;
-        var currentRouteIndex = 0;
-        var watchID;
-        var routeQueue = []; //Cola de rutas
+            let map = null;
+            let currentRoute = {
+                name: '',
+                stops: [], // [{ latlng: L.LatLng, type: 'start'|'intermediate'|'end', name: '', time: 'HH:mm' }]
+                polyline: null, // L.Polyline object
+                geometry: null // OSRM route geometry (array of [lng, lat])
+            };
+            let markers = L.featureGroup(); // Layer group for markers
+            let driverMarker = null;
+            let watchId = null; // Geolocation watch ID
+            let currentStopIndex = 0; // Index of the stop the driver *just passed* (or 0 initially)
+            let nextStopIndex = 1; // Index of the *next* scheduled stop
+            let isTracking = false;
+            let routeQueue = []; // Array of route names ['routeName1', 'routeName2']
+            let currentQueueIndex = 0;
 
-        // Funciones de Almacenamiento en Cache
-        function saveRoute() {
-            let routeName = document.getElementById("routeName").value;
-            if (!routeName) {
-                alert("Debe ingresar un nombre para la ruta.");
-                return;
+            // --- UI Elements ---
+            const mapElement = document.getElementById('map');
+            const stopNameInput = document.getElementById('stop-name');
+            const stopTimeInput = document.getElementById('stop-time');
+            const autoCalculateTimesCheckbox = document.getElementById('auto-calculate-times');
+            const stopListUl = document.getElementById('stop-list');
+            const clearRouteBtn = document.getElementById('clear-route-btn');
+            const routeNameSaveInput = document.getElementById('route-name-save');
+            const saveRouteBtn = document.getElementById('save-route-btn');
+            const routeSelectLoad = document.getElementById('route-select-load');
+            const loadRouteBtn = document.getElementById('load-route-btn');
+            const deleteRouteBtn = document.getElementById('delete-route-btn');
+            const trackingInfoDiv = document.getElementById('tracking-info');
+            const nextStopInfoSpan = document.getElementById('next-stop-info');
+            const currentSpeedSpan = document.getElementById('current-speed');
+            const deviationInfoSpan = document.getElementById('deviation-info');
+            const manualProgressionCheckbox = document.getElementById('manual-progression-checkbox');
+            const manualProgressionControlsDiv = document.getElementById('manual-progression-controls');
+            const startTrackingBtn = document.getElementById('start-tracking-btn');
+            const stopTrackingBtn = document.getElementById('stop-tracking-btn');
+            const prevStopBtn = document.getElementById('prev-stop-btn');
+            const nextStopBtn = document.getElementById('next-stop-btn');
+            const routeSelectQueue = document.getElementById('route-select-queue');
+            const addToQueueBtn = document.getElementById('add-to-queue-btn');
+            const routeQueueListUl = document.getElementById('route-queue-list');
+            const startQueueBtn = document.getElementById('start-queue-btn');
+
+            // --- Helper Functions ---
+
+            // Convert HH:mm string to minutes since midnight
+            function timeToMinutes(timeStr) {
+                if (!timeStr) return NaN;
+                const [hours, minutes] = timeStr.split(':').map(Number);
+                return hours * 60 + minutes;
             }
-            if (route.length < 2) {
-                alert("Debe tener al menos una parada de inicio y final.");
-                return;
+
+             // Convert minutes since midnight to HH:mm string
+            function minutesToTime(totalMinutes) {
+                if (isNaN(totalMinutes)) return '';
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = Math.floor(totalMinutes % 60);
+                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
             }
-            localStorage.setItem("route_" + routeName, JSON.stringify(route));
-            loadSavedRoutes();
-            alert("Ruta guardada.");
-        }
 
-        function loadRoute() {
-            let routeName = document.getElementById("savedRoutes").value;
-            if (routeName) {
-                route = JSON.parse(localStorage.getItem("route_" + routeName));
-                displayRoute();
-                alert("Ruta cargada.");
+            // Calculate time difference in HH:mm:ss format
+            function formatTimeDifference(diffInMs) {
+                const sign = diffInMs < 0 ? "-" : "+";
+                const absDiff = Math.abs(diffInMs);
+                const hours = Math.floor(absDiff / (1000 * 60 * 60));
+                const minutes = Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((absDiff % (1000 * 60)) / 1000);
+                return `${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
             }
-        }
 
-        function deleteRoute() {
-            let routeName = document.getElementById("savedRoutes").value;
-            if (routeName) {
-                localStorage.removeItem("route_" + routeName);
-                loadSavedRoutes();
-                clearRoute();
-                alert("Ruta eliminada.");
+            // Calculate distance between two lat/lng points in meters (Haversine formula)
+            function calculateDistance(latlng1, latlng2) {
+                const R = 6371e3; // metres
+                const φ1 = latlng1.lat * Math.PI / 180; // φ, λ in radians
+                const φ2 = latlng2.lat * Math.PI / 180;
+                const Δφ = (latlng2.lat - latlng1.lat) * Math.PI / 180;
+                const Δλ = (latlng2.lng - latlng1.lng) * Math.PI / 180;
+
+                const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                          Math.cos(φ1) * Math.cos(φ2) *
+                          Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+                const d = R * c; // in metres
+                return d;
             }
-        }
 
-        function loadSavedRoutes() {
-            let select = document.getElementById("savedRoutes");
-            select.innerHTML = ""; // Limpiar opciones
-            for (let i = 0; i < localStorage.length; i++) {
-                let key = localStorage.key(i);
-                if (key.startsWith("route_")) {
-                    let routeName = key.substring(6);
-                    let option = document.createElement("option");
-                    option.value = routeName;
-                    option.text = routeName;
-                    select.add(option);
-                }
+             // Find the closest point on a polyline to a given point
+            // Returns { latlng: L.LatLng, distance: number, segmentIndex: number, segmentFraction: number }
+            function findClosestPointOnPolyline(pointLatLng, polylineGeometry) {
+                 if (!polylineGeometry || polylineGeometry.length < 2) return null;
+
+                 let minDistance = Infinity;
+                 let closestResult = null;
+
+                 for (let i = 0; i < polylineGeometry.length - 1; i++) {
+                     const p1 = L.latLng(polylineGeometry[i][1], polylineGeometry[i][0]); // OSRM is lng,lat
+                     const p2 = L.latLng(polylineGeometry[i+1][1], polylineGeometry[i+1][0]);
+
+                     // Project the point onto the line segment (p1, p2)
+                     const lineMagnitude = calculateDistance(p1, p2);
+                     if (lineMagnitude === 0) continue; // Avoid division by zero
+
+                     const p1_to_point = [pointLatLng.lng - p1.lng, pointLatLng.lat - p1.lat];
+                     const p1_to_p2 = [p2.lng - p1.lng, p2.lat - p1.lat];
+
+                     const dotProduct = p1_to_point[0] * p1_to_p2[0] + p1_to_point[1] * p1_to_p2[1];
+                     const t = dotProduct / (p1_to_p2[0] * p1_to_p2[0] + p1_to_p2[1] * p1_to_p2[1]);
+
+                     let closestPoint;
+                     let segmentFraction;
+
+                     if (t < 0) {
+                         closestPoint = p1;
+                         segmentFraction = 0;
+                     } else if (t > 1) {
+                         closestPoint = p2;
+                         segmentFraction = 1;
+                     } else {
+                         closestPoint = L.latLng(p1.lat + t * p1_to_p2[1], p1.lng + t * p1_to_p2[0]); // Note LatLng order
+                         segmentFraction = t;
+                     }
+
+                     const distance = calculateDistance(pointLatLng, closestPoint);
+
+                     if (distance < minDistance) {
+                         minDistance = distance;
+                         closestResult = {
+                             latlng: closestPoint,
+                             distance: distance,
+                             segmentIndex: i,
+                             segmentFraction: segmentFraction
+                         };
+                     }
+                 }
+                 return closestResult; // minDistance might still be Infinity if polyline < 2 points
             }
-        }
 
-        // Inicialización de Rutas Guardadas
-        loadSavedRoutes();
+            // Calculate cumulative distance along a polyline up to a specific segment index and fraction
+            function calculateCumulativeDistance(geometry, segmentIndex, segmentFraction) {
+                 let cumulativeDist = 0;
+                 if (!geometry || geometry.length < 2) return 0;
 
-        // Funciones de Ruta
-        function addStop(type) {
-            let stopName = prompt("Ingrese el nombre de la parada:");
-            if (!stopName) return;
+                 for (let i = 0; i < segmentIndex; i++) {
+                      cumulativeDist += calculateDistance(
+                          L.latLng(geometry[i][1], geometry[i][0]),
+                          L.latLng(geometry[i+1][1], geometry[i+1][0])
+                      );
+                 }
 
-            let time = prompt("Ingrese el horario (HH:MM):");
-            if (!time && (type === 'inicio' || type === 'final') ) {
-                alert("El horario de inicio y fin es obligatorio.");
-                return;
+                 if (segmentIndex < geometry.length - 1 && segmentFraction > 0) {
+                      cumulativeDist += calculateDistance(
+                         L.latLng(geometry[segmentIndex][1], geometry[segmentIndex][0]),
+                         L.latLng(geometry[segmentIndex+1][1], geometry[segmentIndex+1][0])
+                      ) * segmentFraction;
+                 }
+                 return cumulativeDist;
             }
-            let autoCalculate = document.getElementById("calculateAutomatically").checked;
 
-            map.on('click', function(e) {
-                map.off('click'); // Desactiva el evento click después de la primera parada.
+            // --- Leaflet Map Initialization ---
+            function initMap() {
+                map = L.map('map').setView([40.4168, -3.7038], 13); // Default view (e.g., Madrid)
 
-                let lat = e.latlng.lat;
-                let lng = e.latlng.lng;
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(map);
 
-                let stop = {
-                    name: stopName,
-                    type: type,
-                    lat: lat,
-                    lng: lng,
-                    time: time,
-                };
-                route.push(stop);
-                displayRoute();
-                alert("Parada " + type + " agregada.  Puede agregar más paradas");
-            });
-            alert("Toque en el mapa para definir la ubicación de la parada.");
-        }
+                markers.addTo(map);
 
-        function clearRoute() {
-            route = [];
-            displayRoute();
-        }
+                map.on('click', onMapClick);
+            }
 
-        function displayRoute() {
-            routeLayer.clearLayers();
-            if (route.length === 0) return;
-            let startIcon = L.divIcon({className: 'start-icon', html: '<div style="background-color: #' + Math.floor(Math.random()*16777215).toString(16) + '; color: white; border-radius: 50%; width: 20px; height: 20px; text-align: center; line-height: 20px; font-weight: bold;">I</div>'});
-            let endIcon = L.divIcon({className: 'end-icon', html: '<div style="background-color: #' + Math.floor(Math.random()*16777215).toString(16) + '; color: white; border-radius: 50%; width: 20px; height: 20px; text-align: center; line-height: 20px; font-weight: bold;">F</div>'});
+            // --- Route Management ---
 
-            for (let i = 0; i < route.length; i++) {
-                let stop = route[i];
-                let marker;
-                if (stop.type === 'inicio') {
-                    marker = L.marker([stop.lat, stop.lng], {icon: startIcon}).addTo(routeLayer).bindPopup(stop.name + "<br>Horario: " + stop.time);
-                } else if (stop.type === 'final') {
-                    marker = L.marker([stop.lat, stop.lng], {icon: endIcon}).addTo(routeLayer).bindPopup(stop.name + "<br>Horario: " + stop.time);
+            function addStop(latlng, type, name = '', time = '') {
+                 const stop = {
+                     latlng: latlng,
+                     type: type,
+                     name: name,
+                     time: time // HH:mm string
+                 };
+
+                 if (type === 'start') {
+                     // Add start at the beginning
+                     if (currentRoute.stops.length > 0 && currentRoute.stops[0].type === 'start') {
+                         // Replace existing start if any
+                         currentRoute.stops.shift();
+                     }
+                     currentRoute.stops.unshift(stop);
+                 } else if (type === 'end') {
+                     // Add end at the end
+                      if (currentRoute.stops.length > 0 && currentRoute.stops[currentRoute.stops.length - 1].type === 'end') {
+                         // Replace existing end if any
+                         currentRoute.stops.pop();
+                     }
+                     currentRoute.stops.push(stop);
+                 } else {
+                     // Add intermediate between start and end if they exist, or at the end otherwise
+                     if (currentRoute.stops.length >= 2 && currentRoute.stops[0].type === 'start' && currentRoute.stops[currentRoute.stops.length - 1].type === 'end') {
+                          currentRoute.stops.splice(currentRoute.stops.length - 1, 0, stop);
+                     } else {
+                         currentRoute.stops.push(stop);
+                     }
+                 }
+
+                 updateMapMarkers();
+                 updateStopList();
+                 drawRoute(); // Update route line
+            }
+
+            function removeStop(index) {
+                 if (index >= 0 && index < currentRoute.stops.length) {
+                     // Prevent deleting start/end if they are the only ones
+                     if ((currentRoute.stops[index].type === 'start' || currentRoute.stops[index].type === 'end') && currentRoute.stops.length <= 2) {
+                         alert("No puedes eliminar el inicio o fin si son las únicas paradas.");
+                         return;
+                     }
+                     currentRoute.stops.splice(index, 1);
+                     updateMapMarkers();
+                     updateStopList();
+                     drawRoute(); // Update route line
+                 }
+            }
+
+            function updateMapMarkers() {
+                 markers.clearLayers(); // Remove all existing markers
+
+                 currentRoute.stops.forEach((stop, index) => {
+                     let iconHtml, className, iconColor;
+                     let zIndexOffset = 0; // Bring Start/End/Driver to front
+
+                     if (stop.type === 'start') {
+                         // Generate a random color for the start marker background
+                          const hue = Math.floor(Math.random() * 360);
+                          iconColor = `hsl(${hue}, 70%, 60%)`; // HSL color
+                          iconHtml = '<div class="marker-icon start" style="background-color: ' + iconColor + ';">I</div>';
+                         className = 'leaflet-div-icon start';
+                         zIndexOffset = 100;
+                     } else if (stop.type === 'end') {
+                         iconHtml = '<div class="marker-icon end">F</div>';
+                         className = 'leaflet-div-icon end';
+                         zIndexOffset = 100;
+                     } else { // intermediate
+                         iconHtml = `<div class="marker-icon intermediate">${index}</div>`; // Use index (1-based?) or a counter
+                          // Find the actual index excluding start/end for numbering
+                          const intermediateIndex = currentRoute.stops.filter(s => s.type === 'intermediate').indexOf(stop) + 1;
+                          iconHtml = `<div class="marker-icon intermediate">${intermediateIndex}</div>`;
+
+                         className = 'leaflet-div-icon intermediate';
+                         zIndexOffset = 50;
+                     }
+
+                     const customIcon = L.divIcon({
+                         html: iconHtml,
+                         className: className,
+                         iconSize: [24, 24], // Size of the div
+                         iconAnchor: [12, 12] // Point of the icon which will correspond to marker's location
+                     });
+
+                     const marker = L.marker(stop.latlng, {
+                         icon: customIcon,
+                         zIndexOffset: zIndexOffset
+                     }).addTo(markers);
+
+                     marker.bindPopup(`<b>${stop.name || stop.type.charAt(0).toUpperCase() + stop.type.slice(1)}</b><br>${stop.time ? 'Hora: ' + stop.time : ''}<br>(${stop.latlng.lat.toFixed(4)}, ${stop.latlng.lng.toFixed(4)})`);
+                 });
+
+                 // Add driver marker if tracking
+                 if (isTracking && driverMarker) {
+                     driverMarker.addTo(map); // Ensure driver marker is on top
+                 }
+            }
+
+            function updateStopList() {
+                 stopListUl.innerHTML = ''; // Clear current list
+
+                 currentRoute.stops.forEach((stop, index) => {
+                     const li = document.createElement('li');
+                     li.classList.add('stop-item');
+                     const stopTypeLabel = stop.type === 'start' ? 'Inicio' : (stop.type === 'end' ? 'Fin' : 'Intermedia');
+                     const stopName = stop.name || `(${stopTypeLabel} ${stop.type === 'intermediate' ? index : ''})`;
+                     const stopTime = stop.time ? `(${stop.time})` : '';
+
+                     li.innerHTML = `
+                         <span>
+                             <strong>${stopName}</strong> - ${stopTypeLabel} ${stopTime}
+                         </span>
+                         ${stop.type !== 'start' && stop.type !== 'end' || currentRoute.stops.length > 2 ?
+                             `<button data-index="${index}">X</button>` : ''}
+                     `;
+                     stopListUl.appendChild(li);
+                 });
+
+                 // Add event listeners for remove buttons
+                 stopListUl.querySelectorAll('.stop-item button').forEach(button => {
+                     button.addEventListener('click', (event) => {
+                         const index = parseInt(event.target.dataset.index, 10);
+                         removeStop(index);
+                     });
+                 });
+
+                // Enable/disable auto-calculate based on having start and end times
+                const hasStart = currentRoute.stops.some(s => s.type === 'start' && s.time);
+                const hasEnd = currentRoute.stops.some(s => s.type === 'end' && s.time);
+                autoCalculateTimesCheckbox.disabled = !hasStart || !hasEnd;
+                if (!hasStart || !hasEnd) autoCalculateTimesCheckbox.checked = false;
+            }
+
+            function drawRoute() {
+                 if (currentRoute.polyline) {
+                     map.removeLayer(currentRoute.polyline);
+                 }
+
+                 const latlngs = currentRoute.stops.map(stop => stop.latlng);
+
+                 if (latlngs.length < 2) {
+                     currentRoute.polyline = null;
+                     currentRoute.geometry = null;
+                     return;
+                 }
+
+                 // Get route geometry from OSRM
+                 const coordinates = latlngs.map(ll => `${ll.lng},${ll.lat}`).join(';');
+                 const url = `${OSRM_URL}route?geometries=geojson&overview=full&steps=false&alternatives=false&coordinates=${coordinates}`;
+
+                 fetch(url)
+                     .then(response => response.json())
+                     .then(data => {
+                         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                             currentRoute.geometry = data.routes[0].geometry.coordinates; // array of [lng, lat]
+                             const routeLatlngs = currentRoute.geometry.map(coord => L.latLng(coord[1], coord[0])); // Convert to [lat, lng]
+
+                             currentRoute.polyline = L.polyline(routeLatlngs, { color: '#007bff', weight: 5, opacity: 0.7 }).addTo(map);
+
+                             // Fit map bounds to the route
+                             map.fitBounds(currentRoute.polyline.getBounds());
+
+                             // If auto-calculate is checked, calculate times
+                             if (autoCalculateTimesCheckbox.checked && currentRoute.stops.some(s => s.type === 'start' && s.time) && currentRoute.stops.some(s => s.type === 'end' && s.time)) {
+                                 calculateAutoTimes();
+                             }
+
+                         } else {
+                              console.error('OSRM Error:', data.message);
+                              alert('Error al calcular la ruta con OSRM: ' + (data.message || 'Error desconocido'));
+                              // Draw straight line if OSRM fails
+                             currentRoute.geometry = null; // Clear potentially old geometry
+                             currentRoute.polyline = L.polyline(latlngs, { color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' }).addTo(map); // Indicate it's not the true route
+                             map.fitBounds(currentRoute.polyline.getBounds());
+
+                             // If auto-calculate was checked, clear it and warn
+                             if (autoCalculateTimesCheckbox.checked) {
+                                 autoCalculateTimesCheckbox.checked = false;
+                                 alert('No se pudieron calcular horarios automáticos. Error de OSRM.');
+                             }
+                         }
+                     })
+                     .catch(error => {
+                         console.error('Fetch Error:', error);
+                         alert('Error de red al contactar OSRM. Dibujando línea recta.');
+                         // Draw straight line on network error
+                         currentRoute.geometry = null; // Clear potentially old geometry
+                         currentRoute.polyline = L.polyline(latlngs, { color: '#007bff', weight: 5, opacity: 0.7, dashArray: '10, 10' }).addTo(map);
+                         map.fitBounds(currentRoute.polyline.getBounds());
+                          // If auto-calculate was checked, clear it and warn
+                         if (autoCalculateTimesCheckbox.checked) {
+                             autoCalculateTimesCheckbox.checked = false;
+                             alert('No se pudieron calcular horarios automáticos. Error de red.');
+                         }
+                     });
+            }
+
+            function calculateAutoTimes() {
+                 if (!currentRoute.geometry || currentRoute.stops.length < 2) {
+                      alert('Ruta incompleta o sin geometría OSRM para calcular horarios.');
+                      autoCalculateTimesCheckbox.checked = false;
+                      return;
+                 }
+
+                 const startStop = currentRoute.stops.find(s => s.type === 'start');
+                 const endStop = currentRoute.stops.find(s => s.type === 'end');
+
+                 if (!startStop || !endStop || !startStop.time || !endStop.time) {
+                      alert('Se necesitan horarios de Inicio y Fin para calcular automáticamente.');
+                      autoCalculateTimesCheckbox.checked = false;
+                      return;
+                 }
+
+                 const startTimeMinutes = timeToMinutes(startStop.time);
+                 const endTimeMinutes = timeToMinutes(endStop.time);
+                 let totalRouteTimeMinutes = endTimeMinutes - startTimeMinutes;
+                 // Handle overnight routes (simple wrap-around)
+                 if (totalRouteTimeMinutes < 0) totalRouteTimeMinutes += 24 * 60;
+
+                 // Calculate cumulative distance for each stop along the OSRM geometry
+                 // We need the stop's position *on the calculated geometry*, not just its latlng
+
+                 const geometryLatlngs = currentRoute.geometry.map(coord => L.latLng(coord[1], coord[0])); // Convert to [lat, lng]
+
+                 const stopDistances = currentRoute.stops.map(stop => {
+                     // Find the closest point on the geometry polyline to the stop's latlng
+                     const closest = findClosestPointOnPolyline(stop.latlng, currentRoute.geometry);
+                     if (!closest) return { stop: stop, cumulativeDistance: 0 }; // Should not happen if geometry exists
+
+                     // Calculate cumulative distance up to this closest point
+                      const cumulativeDist = calculateCumulativeDistance(currentRoute.geometry, closest.segmentIndex, closest.segmentFraction);
+                      return { stop: stop, cumulativeDistance: cumulativeDist };
+                 });
+
+                // Find total distance of the OSRM geometry
+                const totalRouteDistance = calculateCumulativeDistance(currentRoute.geometry, currentRoute.geometry.length - 2, 1);
+
+
+                 // Update intermediate stop times based on proportional distance
+                 currentRoute.stops.forEach((stop, index) => {
+                     if (stop.type === 'intermediate') {
+                         const stopDistInfo = stopDistances.find(d => d.stop === stop);
+                          if (!stopDistInfo || totalRouteDistance === 0) {
+                               stop.time = ''; // Cannot calculate if no distance
+                               return;
+                          }
+
+                         const progressFraction = stopDistInfo.cumulativeDistance / totalRouteDistance;
+                         const expectedTimeMinutes = startTimeMinutes + (totalRouteTimeMinutes * progressFraction);
+
+                         // Convert expected time minutes back to HH:mm, handling potential wrap-around if totalTimeMinutes was negative
+                         let expectedHours = Math.floor(expectedTimeMinutes / 60);
+                         let expectedMinutes = Math.floor(expectedTimeMinutes % 60);
+
+                         // Adjust for wrap-around if necessary (simple case)
+                         if (expectedHours < 0) expectedHours += 24;
+                         if (expectedHours >= 24) expectedHours -= 24;
+
+                         stop.time = `${String(expectedHours).padStart(2, '0')}:${String(expectedMinutes).padStart(2, '0')}`;
+                     }
+                 });
+
+                 updateStopList(); // Refresh list to show updated times
+                 alert('Horarios intermedios calculados automáticamente.');
+            }
+
+            function clearRoute() {
+                 currentRoute = { name: '', stops: [], polyline: null, geometry: null };
+                 markers.clearLayers();
+                 if (currentRoute.polyline) {
+                     map.removeLayer(currentRoute.polyline);
+                 }
+                 updateStopList();
+                 stopNameInput.value = '';
+                 stopTimeInput.value = '';
+                 routeNameSaveInput.value = '';
+                 autoCalculateTimesCheckbox.checked = false;
+                 autoCalculateTimesCheckbox.disabled = true; // Re-disable until start/end times are set
+                 stopTracking(); // Stop tracking if active
+                 resetTrackingState();
+                 alert('Ruta limpiada.');
+            }
+
+            // --- Persistence (localStorage) ---
+
+            function saveRoute(name) {
+                 if (!name) {
+                     alert('Por favor, ingrese un nombre para la ruta.');
+                     return;
+                 }
+                 if (currentRoute.stops.length < 2) {
+                      alert('Una ruta debe tener al menos Inicio y Fin para ser guardada.');
+                      return;
+                 }
+
+                 // Store only necessary data, not Leaflet objects
+                 const routeData = {
+                     name: name,
+                     stops: currentRoute.stops.map(stop => ({
+                         lat: stop.latlng.lat,
+                         lng: stop.latlng.lng,
+                         type: stop.type,
+                         name: stop.name,
+                         time: stop.time
+                     })),
+                     geometry: currentRoute.geometry // Store OSRM geometry
+                 };
+
+                 try {
+                     const routes = JSON.parse(localStorage.getItem(CACHE_KEY_ROUTES) || '{}');
+                     const routeNames = JSON.parse(localStorage.getItem(CACHE_KEY_ROUTE_NAMES) || '[]');
+
+                     routes[name] = routeData;
+                     if (!routeNames.includes(name)) {
+                         routeNames.push(name);
+                     }
+
+                     localStorage.setItem(CACHE_KEY_ROUTES, JSON.stringify(routes));
+                     localStorage.setItem(CACHE_KEY_ROUTE_NAMES, JSON.stringify(routeNames));
+
+                     alert(`Ruta "${name}" guardada.`);
+                     listSavedRoutes(); // Refresh load/delete dropdowns
+                     routeNameSaveInput.value = ''; // Clear save input
+                 } catch (e) {
+                     console.error('Error saving route:', e);
+                     alert('Error al guardar la ruta. Verifique el espacio de almacenamiento del navegador.');
+                 }
+            }
+
+            function loadRoute(name) {
+                 if (!name) return;
+
+                 try {
+                     const routes = JSON.parse(localStorage.getItem(CACHE_KEY_ROUTES) || '{}');
+                     const routeData = routes[name];
+
+                     if (routeData) {
+                         clearRoute(); // Clear current route before loading
+                         currentRoute.name = routeData.name;
+                         currentRoute.stops = routeData.stops.map(stop => ({
+                              latlng: L.latLng(stop.lat, stop.lng),
+                              type: stop.type,
+                              name: stop.name,
+                              time: stop.time
+                         }));
+                         currentRoute.geometry = routeData.geometry; // Load stored geometry
+
+                         updateMapMarkers();
+                         updateStopList();
+
+                         // Redraw polyline from stored geometry if available, otherwise request OSRM
+                         if (currentRoute.geometry) {
+                             const routeLatlngs = currentRoute.geometry.map(coord => L.latLng(coord[1], coord[0]));
+                             currentRoute.polyline = L.polyline(routeLatlngs, { color: '#007bff', weight: 5, opacity: 0.7 }).addTo(map);
+                             map.fitBounds(currentRoute.polyline.getBounds());
+                         } else {
+                             // If geometry wasn't saved (e.g., old format or save failed), try to redraw from stops (might trigger OSRM)
+                             drawRoute(); // This will attempt OSRM call if geometry is null
+                         }
+
+                         alert(`Ruta "${name}" cargada.`);
+                          stopTracking(); // Ensure tracking is off after loading
+                          resetTrackingState();
+
+                     } else {
+                         alert(`Ruta "${name}" no encontrada.`);
+                     }
+                 } catch (e) {
+                     console.error('Error loading route:', e);
+                     alert('Error al cargar la ruta.');
+                 }
+            }
+
+            function deleteRoute(name) {
+                 if (!name || !confirm(`¿Está seguro de eliminar la ruta "${name}"?`)) {
+                     return;
+                 }
+
+                 try {
+                     const routes = JSON.parse(localStorage.getItem(CACHE_KEY_ROUTES) || '{}');
+                     let routeNames = JSON.parse(localStorage.getItem(CACHE_KEY_ROUTE_NAMES) || '[]');
+
+                     delete routes[name];
+                     routeNames = routeNames.filter(n => n !== name);
+
+                     localStorage.setItem(CACHE_KEY_ROUTES, JSON.stringify(routes));
+                     localStorage.setItem(CACHE_KEY_ROUTE_NAMES, JSON.stringify(routeNames));
+
+                     alert(`Ruta "${name}" eliminada.`);
+                     listSavedRoutes(); // Refresh dropdowns
+                     // If the deleted route was the current one, clear it
+                     if (currentRoute.name === name) {
+                         clearRoute();
+                     }
+                     // Also remove from queue if present
+                     removeFromQueue(name); // Use name to remove from queue
+                 } catch (e) {
+                     console.error('Error deleting route:', e);
+                     alert('Error al eliminar la ruta.');
+                 }
+            }
+
+            function listSavedRoutes() {
+                 const routeNames = JSON.parse(localStorage.getItem(CACHE_KEY_ROUTE_NAMES) || '[]');
+
+                 // Populate load/delete select
+                 routeSelectLoad.innerHTML = '<option value="">-- Seleccione una ruta --</option>';
+                 routeNames.forEach(name => {
+                     const option = document.createElement('option');
+                     option.value = name;
+                     option.textContent = name;
+                     routeSelectLoad.appendChild(option);
+                 });
+                 loadRouteBtn.disabled = true;
+                 deleteRouteBtn.disabled = true;
+
+                // Populate queue select (copy options from load select)
+                 routeSelectQueue.innerHTML = routeSelectLoad.innerHTML;
+                 addToQueueBtn.disabled = true;
+            }
+
+            function resetTrackingState() {
+                 currentStopIndex = 0;
+                 nextStopIndex = 1;
+                 isTracking = false;
+                 if (driverMarker) {
+                     map.removeLayer(driverMarker);
+                     driverMarker = null;
+                 }
+                 trackingInfoDiv.style.display = 'none';
+                 startTrackingBtn.disabled = false;
+                 stopTrackingBtn.disabled = true;
+                 manualProgressionControlsDiv.style.display = manualProgressionCheckbox.checked ? 'flex' : 'none';
+                 prevStopBtn.disabled = true;
+                 nextStopBtn.disabled = manualProgressionCheckbox.checked ? false : true; // Enable next if manual, disabled otherwise
+                 nextStopInfoSpan.textContent = '-';
+                 currentSpeedSpan.textContent = '- km/h';
+                 deviationInfoSpan.textContent = '-';
+                 deviationInfoSpan.className = 'deviation'; // Reset color class
+            }
+
+            // --- Tracking ---
+
+            function startTracking() {
+                 if (currentRoute.stops.length < 2 || !currentRoute.geometry) {
+                     alert('Necesitas una ruta completa y dibujada (con geometría OSRM) para iniciar el seguimiento.');
+                     return;
+                 }
+
+                 if (isTracking) {
+                     alert('El seguimiento ya está activo.');
+                     return;
+                 }
+
+                 isTracking = true;
+                 currentStopIndex = 0; // Start from the beginning
+                 nextStopIndex = 1;
+                 trackingInfoDiv.style.display = 'block';
+                 startTrackingBtn.disabled = true;
+                 stopTrackingBtn.disabled = false;
+                 updateTrackingUI(); // Initial UI update
+
+                 if (manualProgressionCheckbox.checked) {
+                      manualProgressionControlsDiv.style.display = 'flex';
+                     prevStopBtn.disabled = true; // Cannot go back before stop 0
+                     nextStopBtn.disabled = false; // Can always advance from stop 0
+                 } else {
+                     manualProgressionControlsDiv.style.display = 'none';
+                 }
+
+
+                 // Get initial position and then watch
+                 if (navigator.geolocation) {
+                     navigator.geolocation.getCurrentPosition(
+                         updateTracking,
+                         handleGeolocationError,
+                         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                     );
+                     watchId = navigator.geolocation.watchPosition(
+                         updateTracking,
+                         handleGeolocationError,
+                         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // Options for watchPosition
+                     );
+                 } else {
+                     alert('La geolocalización no es compatible con este navegador.');
+                     stopTracking();
+                 }
+            }
+
+            function stopTracking() {
+                 if (watchId !== null) {
+                     navigator.geolocation.clearWatch(watchId);
+                     watchId = null;
+                 }
+                 isTracking = false;
+                 resetTrackingState(); // Reset UI and variables
+                 alert('Seguimiento detenido.');
+                 // Check queue
+                 if (routeQueue.length > currentQueueIndex + 1) {
+                      // Move to the next route in the queue
+                      currentQueueIndex++;
+                      runQueue(); // Start the next route automatically
+                 } else {
+                     // Queue finished
+                     alert('Cola de rutas completada.');
+                     routeQueue = []; // Clear queue
+                     currentQueueIndex = 0;
+                     listRouteQueue(); // Update queue UI
+                     saveRouteQueue();
+                 }
+            }
+
+            function handleGeolocationError(error) {
+                 console.error('Geolocation Error:', error);
+                 let message;
+                 switch(error.code) {
+                     case error.PERMISSION_DENIED:
+                         message = "Permiso de geolocalización denegado por el usuario.";
+                         break;
+                     case error.POSITION_UNAVAILABLE:
+                         message = "Información de ubicación no disponible.";
+                         break;
+                     case error.TIMEOUT:
+                         message = "La solicitud de ubicación excedió el tiempo de espera.";
+                         break;
+                     default:
+                         message = "Error de geolocalización desconocido.";
+                         break;
+                 }
+                 alert(`Error de Geolocalización: ${message}`);
+                 if (isTracking) { // Stop tracking only if it was active when error occurred
+                    stopTracking(); // This will also handle queue if needed
+                 }
+            }
+
+            function updateTracking(position) {
+                 if (!isTracking) return; // Ensure tracking is still intended
+
+                 const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+                 const speedMps = position.coords.speed; // Speed in meters per second
+                 const speedKmh = speedMps !== null && !isNaN(speedMps) ? (speedMps * 3.6).toFixed(1) : '-';
+
+                 // Update driver marker
+                 if (driverMarker) {
+                     driverMarker.setLatLng(latlng);
+                 } else {
+                     const driverIcon = L.divIcon({
+                         html: '<div class="marker-icon driver">BUS</div>',
+                         className: 'leaflet-div-icon driver',
+                         iconSize: [30, 30],
+                         iconAnchor: [15, 15]
+                     });
+                     driverMarker = L.marker(latlng, { icon: driverIcon, zIndexOffset: 200 }).addTo(map);
+                 }
+
+                 // Update map view to follow driver (optional, maybe toggleable?)
+                 // map.panTo(latlng); // Auto-panning can be annoying, maybe disable for now
+
+                 // Calculate and display deviation
+                 calculateDeviation(latlng);
+
+                 // Update speed display
+                 currentSpeedSpan.textContent = `${speedKmh} km/h`;
+
+                 // Handle automatic stop progression
+                 if (!manualProgressionCheckbox.checked) {
+                      checkAutomaticStopProgression(latlng);
+                 }
+
+                 updateTrackingUI(); // Refresh UI based on current state
+            }
+
+             function checkAutomaticStopProgression(driverLatLng) {
+                 // Advance if driver is very close to the *next* stop's *original* location
+                 // A more sophisticated check would compare driver position to progress *along* the OSRM route geometry,
+                 // but for a simple proximity check, the stop's original point is easier.
+                 // Use a generous radius (e.g., 50-100m)
+                 const proximityThreshold = 70; // meters
+
+                 if (nextStopIndex < currentRoute.stops.length) {
+                     const nextStopLatLng = currentRoute.stops[nextStopIndex].latlng;
+                     const distanceToNextStop = calculateDistance(driverLatLng, nextStopLatLng);
+
+                     if (distanceToNextStop < proximityThreshold) {
+                         console.log(`Reached proximity threshold for stop ${nextStopIndex}.`);
+
+                         // Add a check to ensure we're moving *towards* the stop, not away from it from the wrong side
+                         // This requires looking at route geometry progress, which is complex.
+                         // A simpler heuristic: check if the driver is *past* the *previous* stop point by a reasonable margin,
+                         // and *closer* to the next stop than they were at the last check (requires storing previous position).
+                         // For simplicity in this example, we'll rely mainly on proximity, which might trigger early if route deviates.
+                         // A better way is needed for production: detect progress *along the OSRM route*.
+
+                         // Simple auto-advance logic: if near the *next* stop, advance.
+                         advanceStop(); // This updates currentStopIndex and nextStopIndex
+                     }
+                 } else {
+                      // If nextStopIndex is out of bounds, we're at the end of the route
+                      // Check if driver is near the final stop
+                       const finalStopIndex = currentRoute.stops.length - 1;
+                       if (currentStopIndex === finalStopIndex - 1 && nextStopIndex === finalStopIndex) {
+                            const finalStopLatLng = currentRoute.stops[finalStopIndex].latlng;
+                             const distanceToFinalStop = calculateDistance(driverLatLng, finalStopLatLng);
+                             if (distanceToFinalStop < proximityThreshold) {
+                                 console.log("Reached final stop proximity. Ending tracking.");
+                                 // Reached the end of the current route
+                                 stopTracking(); // This checks and starts the next route in the queue if any
+                             }
+                       } else if (currentStopIndex === finalStopIndex) {
+                            // Driver passed the final stop, tracking should effectively end
+                             console.log("Driver passed final stop. Ending tracking.");
+                             stopTracking(); // This checks and starts the next route in the queue if any
+                       }
+                 }
+             }
+
+
+            function updateTrackingUI() {
+                // Update next stop info
+                if (nextStopIndex < currentRoute.stops.length) {
+                    const nextStop = currentRoute.stops[nextStopIndex];
+                    const nextStopType = nextStop.type === 'start' ? 'Inicio' : (nextStop.type === 'end' ? 'Fin' : `Int. ${currentRoute.stops.filter(s => s.type === 'intermediate').indexOf(nextStop) + 1}`);
+                    const nextStopName = nextStop.name || `Parada ${nextStopType}`;
+                    const nextStopTime = nextStop.time ? `(${nextStop.time})` : '';
+                     nextStopInfoSpan.textContent = `${nextStopName} ${nextStopTime}`;
                 } else {
-                    let intermediateIcon = L.divIcon({className: 'intermediate-icon', html: '<div style="background-color: #' + Math.floor(Math.random()*16777215).toString(16) + '; color: white; border-radius: 50%; width: 20px; height: 20px; text-align: center; line-height: 20px; font-weight: bold;">' + (i) + '</div>'});
-                    marker = L.marker([stop.lat, stop.lng], {icon: intermediateIcon}).addTo(routeLayer).bindPopup(stop.name + "<br>Horario: " + (stop.time ? stop.time : "Sin horario"));
+                    nextStopInfoSpan.textContent = 'Fin de Ruta';
+                     // If using manual progression, disable next button when at last stop
+                     if (manualProgressionCheckbox.checked) {
+                          nextStopBtn.disabled = true;
+                     }
                 }
-                //marker.bindPopup(stop.name + "<br>Tipo: " + stop.type + "<br>Horario: " + stop.time);
+
+                 // Update manual progression button states
+                 if (manualProgressionCheckbox.checked) {
+                     prevStopBtn.disabled = currentStopIndex <= 0; // Disable "Anterior" at start or before start
+                     nextStopBtn.disabled = nextStopIndex >= currentRoute.stops.length; // Disable "Siguiente" at or after end
+                 }
             }
 
-            // Dibujar línea
-            let latlngs = route.map(stop => [stop.lat, stop.lng]);
-            if (latlngs.length > 1) {
-                L.polyline(latlngs, {color: 'red'}).addTo(routeLayer);
-                map.fitBounds(L.polyline(latlngs, {color: 'red'}).getBounds());
-            }
-        }
+             function advanceStop() {
+                 if (nextStopIndex < currentRoute.stops.length) {
+                      currentStopIndex = nextStopIndex;
+                      nextStopIndex++;
+                      console.log(`Advanced to stop index ${currentStopIndex}. Next is ${nextStopIndex}.`);
+                      updateTrackingUI(); // Update UI to show the new next stop
+                 } else {
+                      // Reached the end
+                      currentStopIndex = currentRoute.stops.length -1;
+                      nextStopIndex = currentRoute.stops.length; // Indicate no more next stops
+                      console.log("Reached end of stops.");
+                      updateTrackingUI();
+                      // The stopTracking() function handles the *actual* end of the route and queue
+                 }
+             }
 
-        // Funciones de Seguimiento
-        function startTracking() {
-            if (route.length < 2) {
-                alert("Debe cargar o crear una ruta con al menos una parada de inicio y final.");
-                return;
+             function retreatStop() {
+                  if (currentStopIndex > 0) {
+                      currentStopIndex--;
+                      nextStopIndex--;
+                      console.log(`Retreated to stop index ${currentStopIndex}. Next is ${nextStopIndex}.`);
+                      updateTrackingUI(); // Update UI
+                  } else {
+                       console.log("Already at start.");
+                       prevStopBtn.disabled = true; // Should already be disabled, but ensure
+                  }
+             }
+
+
+            function calculateDeviation(currentPositionLatLng) {
+                 // Requires planned route geometry (currentRoute.geometry)
+                 if (!currentRoute.geometry || currentRoute.geometry.length < 2 || currentRoute.stops.length < 2) {
+                      deviationInfoSpan.textContent = 'N/A (sin geometría)';
+                      deviationInfoSpan.className = 'deviation';
+                      return;
+                 }
+
+                 // Find the segment the driver is currently on or closest to.
+                 // Use the *full* route geometry for calculation, finding the closest point on it.
+                 const closestPointResult = findClosestPointOnPolyline(currentPositionLatLng, currentRoute.geometry);
+
+                 if (!closestPointResult) {
+                     deviationInfoSpan.textContent = 'N/A (geometría error)';
+                     deviationInfoSpan.className = 'deviation';
+                     return;
+                 }
+
+                 const cumulativeDistance = calculateCumulativeDistance(currentRoute.geometry, closestPointResult.segmentIndex, closestPointResult.segmentFraction);
+                 const totalRouteDistance = calculateCumulativeDistance(currentRoute.geometry, currentRoute.geometry.length - 2, 1); // Length of the last segment is 1, so total distance is sum up to second-to-last + length of last segment
+
+                 if (totalRouteDistance === 0) {
+                     deviationInfoSpan.textContent = 'N/A (distancia 0)';
+                     deviationInfoSpan.className = 'deviation';
+                     return;
+                 }
+
+                 const progressFraction = cumulativeDistance / totalRouteDistance; // Progress along the *entire* route geometry
+
+                 const startStop = currentRoute.stops.find(s => s.type === 'start');
+                 const endStop = currentRoute.stops.find(s => s.type === 'end');
+
+                 if (!startStop || !endStop || !startStop.time || !endStop.time) {
+                      deviationInfoSpan.textContent = 'N/A (horarios faltan)';
+                      deviationInfoSpan.className = 'deviation';
+                      return;
+                 }
+
+                 const startTimeMinutes = timeToMinutes(startStop.time);
+                 let endTimeMinutes = timeToMinutes(endStop.time);
+                  // Adjust end time for overnight routes
+                 if (endTimeMinutes < startTimeMinutes) endTimeMinutes += 24 * 60;
+                 const totalRouteTimeMinutes = endTimeMinutes - startTimeMinutes;
+
+
+                 // Calculate expected time based on total route time and current progress
+                 const expectedTimeMinutesSinceStart = totalRouteTimeMinutes * progressFraction;
+                 const expectedAbsoluteTimeMinutes = startTimeMinutes + expectedTimeMinutesSinceStart;
+
+                 // Convert expected absolute minutes to a Date object for comparison
+                 const now = new Date();
+                 const expectedDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                 expectedDate.setHours(Math.floor(expectedAbsoluteTimeMinutes / 60), Math.floor(expectedAbsoluteTimeMinutes % 60), Math.floor((expectedAbsoluteTimeMinutes * 60) % 60), 0); // Set seconds for precision
+
+                 // If expected time wraps around midnight but current time is on the next day
+                 if (expectedAbsoluteTimeMinutes >= 24 * 60 && now.getDate() > expectedDate.getDate()) {
+                      expectedDate.setDate(expectedDate.getDate() + 1);
+                 } else if (expectedAbsoluteTimeMinutes < 0 && now.getDate() < expectedDate.getDate()) {
+                     // If expected time was negative (previous day) but we are on the planned day
+                     expectedDate.setDate(expectedDate.getDate() - 1);
+                 }
+
+
+                 const deviationMs = now.getTime() - expectedDate.getTime(); // Positive means late, negative means early
+                 const deviationFormatted = formatTimeDifference(-deviationMs); // Invert sign for requested format (+ early, - late)
+
+                 deviationInfoSpan.textContent = deviationFormatted;
+
+                 // Set color class
+                 if (deviationMs > 60000) { // More than 1 minute late
+                     deviationInfoSpan.className = 'deviation behind';
+                 } else if (deviationMs < -60000) { // More than 1 minute early
+                     deviationInfoSpan.className = 'deviation ahead';
+                 } else {
+                     deviationInfoSpan.className = 'deviation'; // On time
+                 }
             }
-            currentRouteIndex = 0;
-            if ("geolocation" in navigator) {
-                watchID = navigator.geolocation.watchPosition(
-                    updatePosition,
-                    handleError,
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 5000,
-                        maximumAge: 0
-                    }
-                );
-                alert("Seguimiento iniciado.");
-                updateNextStop();
+
+            // --- Route Queue ---
+
+             function listRouteQueue() {
+                 routeQueueListUl.innerHTML = '';
+                 if (routeQueue.length === 0) {
+                      routeQueueListUl.innerHTML = '<li>Cola vacía</li>';
+                      startQueueBtn.disabled = true;
+                      return;
+                 }
+                 routeQueue.forEach((name, index) => {
+                     const li = document.createElement('li');
+                     li.classList.add('queue-item');
+                     li.innerHTML = `
+                         <span>
+                             ${index === currentQueueIndex ? '🏃 ' : ''}
+                              ${index + 1}. <strong>${name}</strong>
+                         </span>
+                          ${index !== currentQueueIndex ? `<button data-name="${name}" data-index="${index}">X</button>` : ''}
+                     `;
+                     routeQueueListUl.appendChild(li);
+                 });
+
+                 // Add event listeners for remove buttons
+                 routeQueueListUl.querySelectorAll('.queue-item button').forEach(button => {
+                     button.addEventListener('click', (event) => {
+                         const nameToRemove = event.target.dataset.name;
+                         removeFromQueue(nameToRemove);
+                     });
+                 });
+
+                 startQueueBtn.disabled = isTracking || routeQueue.length === 0;
+             }
+
+             function addToQueue(routeName) {
+                 if (!routeName) return;
+                 if (!routeQueue.includes(routeName)) {
+                      routeQueue.push(routeName);
+                      listRouteQueue();
+                      saveRouteQueue();
+                 } else {
+                      alert('La ruta ya está en la cola.');
+                 }
+             }
+
+             function removeFromQueue(nameToRemove) {
+                  const initialLength = routeQueue.length;
+                 routeQueue = routeQueue.filter(name => name !== nameToRemove);
+                 if (routeQueue.length < initialLength) {
+                      // Adjust currentQueueIndex if the removed item was before it
+                     // This is a simplified approach; more robust logic might be needed
+                     // if removing the *currently running* route. For now, disabling removal
+                     // of the current route handled in listRouteQueue HTML generation.
+                     listRouteQueue();
+                     saveRouteQueue();
+                 }
+             }
+
+             function saveRouteQueue() {
+                 try {
+                      localStorage.setItem(CACHE_KEY_QUEUE, JSON.stringify({ queue: routeQueue, currentIndex: currentQueueIndex }));
+                 } catch (e) {
+                      console.error('Error saving queue:', e);
+                 }
+             }
+
+             function loadRouteQueue() {
+                  try {
+                     const savedQueue = JSON.parse(localStorage.getItem(CACHE_KEY_QUEUE) || '{}');
+                      if (savedQueue && Array.isArray(savedQueue.queue)) {
+                         routeQueue = savedQueue.queue;
+                         currentQueueIndex = savedQueue.currentIndex || 0;
+                         // Basic validation: ensure currentIndex is within bounds
+                         if (currentQueueIndex < 0 || currentQueueIndex >= routeQueue.length) {
+                              currentQueueIndex = 0; // Reset if invalid
+                         }
+                          listRouteQueue();
+                      }
+                 } catch (e) {
+                      console.error('Error loading queue:', e);
+                      routeQueue = []; // Clear corrupted queue
+                      currentQueueIndex = 0;
+                      listRouteQueue();
+                 }
+             }
+
+             function runQueue() {
+                 if (isTracking) {
+                      console.log("Tracking already active, queue will proceed after current route finishes.");
+                     // stopTracking will handle advancing the queue index and starting the next route
+                     return;
+                 }
+                  if (routeQueue.length === 0 || currentQueueIndex >= routeQueue.length) {
+                     alert('Cola de rutas vacía o completada.');
+                     stopTracking(); // Ensure tracking is off and state reset
+                     routeQueue = []; // Clear queue
+                     currentQueueIndex = 0;
+                     listRouteQueue();
+                     saveRouteQueue();
+                     return;
+                 }
+
+                 const routeName = routeQueue[currentQueueIndex];
+                 console.log(`Running route from queue: "${routeName}" (Index ${currentQueueIndex})`);
+
+                 // Load the route
+                 const routes = JSON.parse(localStorage.getItem(CACHE_KEY_ROUTES) || '{}');
+                 const routeData = routes[routeName];
+
+                 if (!routeData) {
+                     alert(`Error: Ruta "${routeName}" no encontrada. Saltando.`);
+                     // Remove invalid route from queue and try next
+                     routeQueue.splice(currentQueueIndex, 1); // Remove the invalid one
+                     // currentQueueIndex does not need adjustment if we remove the item at the current index
+                     listRouteQueue();
+                     saveRouteQueue();
+                     runQueue(); // Try running the next one
+                     return;
+                 }
+
+                 // Load the route data into currentRoute structure
+                  clearRoute(); // Clear current route before loading
+                 currentRoute.name = routeData.name;
+                 currentRoute.stops = routeData.stops.map(stop => ({
+                      latlng: L.latLng(stop.lat, stop.lng),
+                      type: stop.type,
+                      name: stop.name,
+                      time: stop.time
+                 }));
+                 currentRoute.geometry = routeData.geometry; // Load stored geometry
+
+                  updateMapMarkers();
+                  updateStopList();
+
+                  // Redraw polyline from stored geometry if available, otherwise request OSRM
+                  if (currentRoute.geometry) {
+                      const routeLatlngs = currentRoute.geometry.map(coord => L.latLng(coord[1], coord[0])); // Convert to [lat, lng]
+                      currentRoute.polyline = L.polyline(routeLatlngs, { color: '#007bff', weight: 5, opacity: 0.7 }).addTo(map);
+                       map.fitBounds(currentRoute.polyline.getBounds());
+                  } else {
+                       // If geometry wasn't saved, try to redraw from stops (might trigger OSRM)
+                      drawRoute(); // This will attempt OSRM call if geometry is null
+                       // Note: If OSRM fails here, start tracking won't work correctly.
+                       // A production app would need robust OSRM handling or pre-calculated geometry.
+                  }
+
+                 alert(`Iniciando ruta de la cola: "${routeName}"`);
+                 listRouteQueue(); // Update queue UI to show which one is running
+                 saveRouteQueue();
+                 startTracking(); // Start tracking for the loaded route
+             }
+
+
+            // --- Event Handlers ---
+
+            function onMapClick(e) {
+                 const latlng = e.latlng;
+                 const name = stopNameInput.value.trim();
+                 const time = stopTimeInput.value;
+
+                 if (currentRoute.stops.length === 0) {
+                     // First click: Start
+                     if (!time) {
+                         alert('El punto de Inicio requiere un horario obligatorio.');
+                         return;
+                     }
+                     addStop(latlng, 'start', name || 'Inicio', time);
+                 } else if (currentRoute.stops.length === 1 && currentRoute.stops[0].type === 'start') {
+                     // Second click: End
+                      if (!time) {
+                         alert('El punto Final requiere un horario obligatorio.');
+                         return;
+                     }
+                     addStop(latlng, 'end', name || 'Fin', time);
+                 } else {
+                     // Subsequent clicks: Intermediate
+                     addStop(latlng, 'intermediate', name, time);
+                 }
+
+                 // Clear inputs after adding a stop
+                 stopNameInput.value = '';
+                 stopTimeInput.value = '';
+            }
+
+            clearRouteBtn.addEventListener('click', clearRoute);
+
+            saveRouteBtn.addEventListener('click', () => {
+                 const name = routeNameSaveInput.value.trim();
+                 saveRoute(name);
+            });
+
+            routeSelectLoad.addEventListener('change', (event) => {
+                 const selectedName = event.target.value;
+                 loadRouteBtn.disabled = !selectedName;
+                 deleteRouteBtn.disabled = !selectedName;
+            });
+
+            loadRouteBtn.addEventListener('click', () => {
+                 const selectedName = routeSelectLoad.value;
+                 loadRoute(selectedName);
+            });
+
+            deleteRouteBtn.addEventListener('click', () => {
+                 const selectedName = routeSelectLoad.value;
+                 deleteRoute(selectedName);
+            });
+
+            startTrackingBtn.addEventListener('click', startTracking);
+            stopTrackingBtn.addEventListener('click', stopTracking);
+
+            manualProgressionCheckbox.addEventListener('change', (event) => {
+                 if (isTracking) {
+                     // Toggle manual controls display if tracking is active
+                     manualProgressionControlsDiv.style.display = event.target.checked ? 'flex' : 'none';
+                      // Enable/disable next/prev buttons based on current state if manual is ON
+                      if (event.target.checked) {
+                           prevStopBtn.disabled = currentStopIndex <= 0;
+                           nextStopBtn.disabled = nextStopIndex >= currentRoute.stops.length;
+                      } else {
+                           prevStopBtn.disabled = true;
+                           nextStopBtn.disabled = true;
+                      }
+                 } else {
+                     // If not tracking, just toggle the controls div display state
+                     manualProgressionControlsDiv.style.display = event.target.checked ? 'flex' : 'none';
+                     // Buttons should be disabled if not tracking, regardless of manual mode
+                     prevStopBtn.disabled = true;
+                     nextStopBtn.disabled = true;
+                 }
+            });
+
+             prevStopBtn.addEventListener('click', retreatStop);
+             nextStopBtn.addEventListener('click', advanceStop);
+
+            autoCalculateTimesCheckbox.addEventListener('change', (event) => {
+                 if (event.target.checked) {
+                     calculateAutoTimes();
+                 } else {
+                     // Option: Clear intermediate times when unchecked? Or keep them?
+                     // Let's keep them, but the user can edit manually
+                     console.log("Cálculo automático de horarios desactivado.");
+                 }
+            });
+
+            routeSelectQueue.addEventListener('change', (event) => {
+                 const selectedName = event.target.value;
+                 addToQueueBtn.disabled = !selectedName;
+            });
+
+            addToQueueBtn.addEventListener('click', () => {
+                 const selectedName = routeSelectQueue.value;
+                 addToQueue(selectedName);
+                 routeSelectQueue.value = ''; // Reset select after adding
+                 addToQueueBtn.disabled = true;
+            });
+
+            startQueueBtn.addEventListener('click', () => {
+                 currentQueueIndex = 0; // Start queue from the beginning
+                 runQueue();
+            });
+
+
+            // --- Initialization ---
+            initMap();
+            listSavedRoutes(); // Populate save/load dropdowns
+            loadRouteQueue(); // Load saved queue state
+
+            // Handle initial state based on loaded queue
+            if (routeQueue.length > 0 && currentQueueIndex < routeQueue.length && localStorage.getItem('smartMoveIsTracking') === 'true') {
+                 // Attempt to resume tracking if it was active (needs more sophisticated state saving)
+                 // For this example, we'll just load the first route in the queue but require manual start
+                 alert('Cola pendiente. Cargue una ruta y presione Iniciar Seguimiento.');
+                 const firstRouteInQueue = routeQueue[currentQueueIndex];
+                 if (firstRouteInQueue) {
+                     loadRoute(firstRouteInQueue); // Load the first route in the queue list
+                 }
+                 // Note: A full resume would need saving tracking state (currentStopIndex, driver position if possible, etc.)
+                 // For now, manual start is required after loading.
             } else {
-                alert("Geolocalización no soportada.");
+                // Default state: empty route, not tracking
+                clearRoute(); // Ensure UI is clean
             }
-        }
-
-        function stopTracking() {
-            if (watchID) {
-                navigator.geolocation.clearWatch(watchID);
-                watchID = null;
-                if(currentPositionMarker){
-                    map.removeLayer(currentPositionMarker);
-                }
-                currentPositionMarker = null;
-                document.getElementById("speed").innerText = "0";
-                document.getElementById("deviation").innerText = "00:00";
-                document.getElementById("deviation").className = "deviation-neutral";
-                document.getElementById("nextStopName").innerText = "Ninguna";
-                alert("Seguimiento detenido.");
-            } else {
-                alert("El seguimiento no ha sido iniciado.");
-            }
-        }
-
-        function updatePosition(position) {
-            let lat = position.coords.latitude;
-            let lng = position.coords.longitude;
-            let speed = position.coords.speed ? (position.coords.speed * 3.6).toFixed(2) : 0; // Convertir m/s a km/h
-
-            document.getElementById("speed").innerText = speed;
-
-            if (currentPositionMarker) {
-                currentPositionMarker.setLatLng([lat, lng]);
-            } else {
-                currentPositionMarker = L.marker([lat, lng]).addTo(map).bindPopup("Tú estás aquí");
-                map.setView([lat, lng], 16); // Centrar en la ubicación del usuario
-            }
-
-            calculateDeviation(lat, lng);
-
-            //Detección Automática de Parada
-            if(!document.getElementById("manualAdvance").checked){
-                autoAdvance(lat, lng);
-            }
-
-        }
-
-        function handleError(error) {
-            alert("Error al obtener la ubicación: " + error.message);
-        }
-
-        function calculateDeviation(lat, lng) {
-            if (route.length < 2 || currentRouteIndex >= route.length - 1) return;
-
-            let pointA = route[currentRouteIndex];
-            let pointB = route[currentRouteIndex + 1];
-
-            let totalDistance = calculateDistance(pointA.lat, pointA.lng, pointB.lat, pointB.lng);
-            let totalTime = timeDifference(pointA.time, pointB.time); // en minutos
-
-            let currentDistance = calculateDistance(pointA.lat, pointA.lng, lat, lng);
-
-            let positionPercentage = currentDistance / totalDistance;
-            if (positionPercentage > 1) positionPercentage = 1; // No exceder 100%
-
-            let expectedTimeMinutes = positionPercentage * totalTime; // Tiempo esperado en minutos
-
-            let expectedArrivalTime = new Date();
-            let startTimeParts = pointA.time.split(":");
-            expectedArrivalTime.setHours(parseInt(startTimeParts[0]));
-            expectedArrivalTime.setMinutes(parseInt(startTimeParts[1]));
-            expectedArrivalTime.setSeconds(0);
-            expectedArrivalTime.setMilliseconds(0);
-
-            expectedArrivalTime.setMinutes(expectedArrivalTime.getMinutes() + expectedTimeMinutes);
-
-            let now = new Date();
-            let deviationMinutes = (now.getTime() - expectedArrivalTime.getTime()) / (60 * 1000);
-
-            let deviationSign = deviationMinutes >= 0 ? "+" : "-";
-            let absDeviationMinutes = Math.abs(Math.floor(deviationMinutes));
-            let absDeviationSeconds = Math.abs(Math.floor((deviationMinutes - Math.floor(deviationMinutes)) * 60));
-
-            let deviationString = deviationSign + pad(absDeviationMinutes) + ":" + pad(absDeviationSeconds);
-
-            document.getElementById("deviation").innerText = deviationString;
-            if (deviationMinutes >= 0) {
-                document.getElementById("deviation").className = "deviation-positive";
-            } else {
-                document.getElementById("deviation").className = "deviation-negative";
-            }
-        }
-
-        function timeDifference(startTime, endTime) {
-            let startParts = startTime.split(":");
-            let endParts = endTime.split(":");
-
-            let startDate = new Date(0, 0, 0, parseInt(startParts[0]), parseInt(startParts[1]), 0);
-            let endDate = new Date(0, 0, 0, parseInt(endParts[0]), parseInt(endParts[1]), 0);
-
-            let diff = endDate.getTime() - startDate.getTime();
-            let minutes = Math.abs(diff) / (1000 * 60);
-
-            return minutes;
-        }
-
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371; // Radio de la Tierra en km
-            const dLat = deg2rad(lat2 - lat1);
-            const dLon = deg2rad(lon2 - lon1);
-            const a =
-                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            const d = R * c; // Distancia en km
-            return d;
-        }
-
-        function deg2rad(deg) {
-            return deg * (Math.PI / 180)
-        }
-
-        function pad(num) {
-            return num < 10 ? "0" + num : num;
-        }
-
-        // Funcionalidad Avance Manual
-        function nextStop() {
-            if (currentRouteIndex < route.length - 1) {
-                currentRouteIndex++;
-                updateNextStop();
-                alert("Avanzando a la siguiente parada.");
-            } else {
-                alert("Ya está en la última parada.");
-            }
-        }
-
-        function previousStop() {
-            if (currentRouteIndex > 0) {
-                currentRouteIndex--;
-                updateNextStop();
-                alert("Retrocediendo a la parada anterior.");
-            } else {
-                alert("Ya está en la primera parada.");
-            }
-        }
-
-        function updateNextStop() {
-            if (route.length > 0 && currentRouteIndex < route.length - 1) {
-                document.getElementById("nextStopName").innerText = route[currentRouteIndex + 1].name;
-            } else if(currentRouteIndex >= route.length - 1) {
-                document.getElementById("nextStopName").innerText = "Fin de la ruta";
-            }else{
-                document.getElementById("nextStopName").innerText = "Ninguna";
-            }
-
-        }
-
-        function autoAdvance(lat, lng){
-            if(route.length < 2) return;
-
-            let pointA = route[currentRouteIndex];
-            let pointB = route[currentRouteIndex + 1];
-
-            let distanceToB = calculateDistance(lat, lng, pointB.lat, pointB.lng);
-            let distanceToA = calculateDistance(lat, lng, pointA.lat, pointA.lng);
-
-            if(distanceToB < 0.1 && currentRouteIndex < route.length -1){ //100 metros
-                currentRouteIndex++;
-                updateNextStop();
-                alert("Avanzando a la siguiente parada automáticamente.");
-            } else if (currentRouteIndex > 0 && distanceToA < 0.1){ //si ya pasó una parada, verifica la distancia a la anterior para ver si retrocede.
-                let prevPoint = route[currentRouteIndex-1];
-                let distanceToPrev = calculateDistance(lat, lng, prevPoint.lat, prevPoint.lng);
-                if(distanceToPrev < 0.1){
-                    currentRouteIndex--;
-                    updateNextStop();
-                    alert("Retrocediendo a la parada anterior automáticamente.");
-                }
-            }
-
-
-            if(currentRouteIndex >= route.length - 1){
-                alert("Ha llegado al final de la ruta.");
-                stopTracking();
-            }
-
-        }
-
-        // Funcionalidad Cola de Rutas
-        function addToQueue() {
-            let routeName = document.getElementById("routeName").value;
-            if (!routeName) {
-                alert("Debe ingresar un nombre para la ruta.");
-                return;
-            }
-            routeQueue.push(routeName);
-            updateRouteQueueDisplay();
-            alert("Ruta agregada a la cola.");
-        }
-
-        function updateRouteQueueDisplay() {
-            let queueList = document.getElementById("routeQueue");
-            queueList.innerHTML = "";
-            for (let i = 0; i < routeQueue.length; i++) {
-                let routeName = routeQueue[i];
-                let listItem = document.createElement("li");
-                listItem.textContent = routeName;
-                queueList.appendChild(listItem);
-            }
-        }
-
-        //Inicio de la Cola
-        function startQueue() {
-          if (routeQueue.length === 0) {
-            alert("La cola de rutas está vacía.");
-            return;
-          }
-
-          // Obtiene la primera ruta de la cola
-          let nextRouteName = routeQueue.shift();
-          document.getElementById("savedRoutes").value = nextRouteName;
-
-          // Carga la ruta y comienza el seguimiento
-          loadRoute();
-          startTracking();
-
-          // Actualiza la visualización de la cola
-          updateRouteQueueDisplay();
-        }
-
+        });
     </script>
-
 </body>
 </html>
