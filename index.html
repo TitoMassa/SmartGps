@@ -210,13 +210,13 @@
     <script>
         // Variables globales
         let map;
-        let currentRouteStops = []; // {lat, lng, name, time, type, originalIndex}
+        let currentRouteStops = []; // {lat, lng, name, time, type, originalIndex, manuallySetTime}
         let routePolyline = null;
         let stopMarkers = [];
         let driverMarker = null;
         let geolocWatchId = null;
         let isTracking = false;
-        let currentTrackingStopIndex = 0; // Índice en currentRouteStops
+        let currentTrackingStopIndex = 0; // Índice en currentRouteStops (ordenado por originalIndex para seguimiento)
         const PROXIMITY_THRESHOLD = 50; // metros para detección de parada
 
         // --- INICIALIZACIÓN ---
@@ -247,7 +247,6 @@
 
             map.on('click', onMapClick);
 
-            // Intentar centrar el mapa en la ubicación actual del usuario al inicio
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => map.setView([position.coords.latitude, position.coords.longitude], 13),
@@ -268,6 +267,14 @@
             document.getElementById('manualAdvance').addEventListener('change', toggleManualAdvanceControls);
             document.getElementById('prevStopBtn').addEventListener('click', () => manualAdvanceStop(-1));
             document.getElementById('nextStopBtn').addEventListener('click', () => manualAdvanceStop(1));
+            
+            document.getElementById('autoCalcTimes').addEventListener('change', () => {
+                if (document.getElementById('autoCalcTimes').checked) {
+                    calculateAndApplyIntermediateTimes();
+                }
+                // Si se desmarca, no hacemos nada con los tiempos ya calculados/manuales.
+                // El usuario tendría que editarlos uno por uno o limpiar la ruta.
+            });
         }
 
         // --- LÓGICA DE CREACIÓN DE RUTA ---
@@ -282,44 +289,47 @@
             const stopNameInput = document.getElementById('stopName');
             const stopTimeInput = document.getElementById('stopTime');
             let stopType;
-            let stopTime = stopTimeInput.value;
+            let stopTime = stopTimeInput.value; // HH:MM
+            let manuallySetTimeFlag = false;
 
             if (currentRouteStops.length === 0) { // Inicio
                 stopType = 'Inicio';
                 if (!stopTime) { alert("Debe ingresar el horario de Salida para la parada de INICIO."); return; }
+                manuallySetTimeFlag = true;
             } else if (currentRouteStops.length === 1) { // Fin
                 stopType = 'Fin';
                 if (!stopTime) { alert("Debe ingresar el horario de Llegada para la parada de FIN."); return; }
+                manuallySetTimeFlag = true;
             } else { // Intermedia
                 stopType = 'Intermedia';
-                // Nombre y horario son opcionales para intermedias
+                if (stopTime) { // Si el usuario proveyó tiempo para una intermedia
+                    manuallySetTimeFlag = true;
+                }
+                // Nombre y horario son opcionales para intermedias si manuallySetTimeFlag es false
             }
             
             const stop = {
                 lat: lat,
                 lng: lng,
                 name: stopNameInput.value || `${stopType} ${currentRouteStops.filter(s=>s.type === stopType).length + 1}`,
-                time: stopTime, // Se mantendrá como string HH:MM
+                time: stopTime,
                 type: stopType,
-                originalIndex: currentRouteStops.length // Para mantener el orden original antes de recalcular tiempos
+                originalIndex: currentRouteStops.length,
+                manuallySetTime: manuallySetTimeFlag
             };
 
-            // Si es una parada intermedia y se está insertando después de "Fin",
-            // hay que reajustar. La parada de "Fin" siempre debe ser la última definida manualmente.
             if (currentRouteStops.length > 1 && currentRouteStops[1].type === 'Fin' && stopType === 'Intermedia') {
-                const finalStop = currentRouteStops.pop(); // Quitar el Fin temporalmente
-                currentRouteStops.push(stop); // Añadir la nueva intermedia
-                currentRouteStops.push(finalStop); // Volver a poner el Fin al final
+                const finalStop = currentRouteStops.pop(); 
+                currentRouteStops.push(stop); 
+                currentRouteStops.push(finalStop); 
             } else {
                  currentRouteStops.push(stop);
             }
 
+            stopNameInput.value = ''; 
 
-            stopNameInput.value = ''; // Limpiar para la siguiente
-            // stopTimeInput.value = ''; // No limpiar el tiempo, puede ser útil para paradas secuenciales.
-
-            if (document.getElementById('autoCalcTimes').checked && currentRouteStops.length > 2 && currentRouteStops[0].time && currentRouteStops[1].time) {
-                calculateAndApplyIntermediateTimes();
+            if (document.getElementById('autoCalcTimes').checked) {
+                calculateAndApplyIntermediateTimes(); // Recalcular siempre que se añade una parada y la opción está activa
             }
             
             visualizeCurrentRoute();
@@ -341,11 +351,16 @@
             currentRouteStops = [];
             visualizeCurrentRoute();
             updateCurrentStopTypeInfo();
-            document.getElementById('stopsList').innerHTML = ''; // Limpiar lista
+            document.getElementById('stopsList').innerHTML = '';
         }
-
+        
         function calculateAndApplyIntermediateTimes() {
-            if (currentRouteStops.length < 2) return; // Necesita al menos inicio y fin
+            if (currentRouteStops.length < 2) return;
+
+            // Usar una copia para no modificar directamente mientras se itera si es complejo,
+            // aunque aquí modificaremos las referencias directamente.
+            // Primero, asegurarse que los objetos de currentRouteStops tengan el flag `manuallySetTime`
+            // (ya debería estar por `onMapClick`)
 
             const startStop = currentRouteStops.find(s => s.type === 'Inicio');
             const endStop = currentRouteStops.find(s => s.type === 'Fin');
@@ -357,136 +372,127 @@
 
             const startTimeSeconds = timeToSeconds(startStop.time);
             const endTimeSeconds = timeToSeconds(endStop.time);
-            const totalTripDurationSeconds = endTimeSeconds - startTimeSeconds;
-
-            if (totalTripDurationSeconds <= 0) {
-                console.warn("La hora de fin debe ser posterior a la de inicio.");
-                // Podríamos optar por limpiar los tiempos intermedios o mostrar un error
+            
+            if (endTimeSeconds <= startTimeSeconds) {
+                console.warn("La hora de fin debe ser posterior a la de inicio. No se calcularán tiempos intermedios.");
+                // Opcionalmente, limpiar tiempos intermedios no manuales si ya existen
                 currentRouteStops.forEach(stop => {
-                    if (stop.type === 'Intermedia' && !stop.manuallySetTime) { // Asumimos que si el usuario puso tiempo, no lo tocamos
+                    if (stop.type === 'Intermedia' && !stop.manuallySetTime) {
                         stop.time = '';
                     }
                 });
-                visualizeCurrentRoute(); // Actualizar la lista para reflejar tiempos vacíos
+                visualizeCurrentRoute();
                 return;
             }
 
-            // Recopilar solo las paradas que forman el trayecto principal (Inicio, Intermedias, Fin) en orden
-            let pathStops = [startStop];
-            currentRouteStops.filter(s => s.type === 'Intermedia').sort((a,b) => a.originalIndex - b.originalIndex).forEach(s => pathStops.push(s));
-            pathStops.push(endStop);
+            // Construir la secuencia de paradas que formarán la ruta para el cálculo.
+            // Incluye Inicio, todas las Intermedias (manuales o no) y Fin, ordenadas.
+            let calculationPath = [startStop];
+            calculationPath.push(...currentRouteStops.filter(s => s.type === 'Intermedia').sort((a, b) => a.originalIndex - b.originalIndex));
+            calculationPath.push(endStop);
+            
+            // Eliminar duplicados si startStop o endStop fueron accidentalmente agregados como intermedias
+            // (la lógica de tipos debería prevenir esto, pero por si acaso)
+            calculationPath = calculationPath.filter((stop, index, self) =>
+                index === self.findIndex(s => s.originalIndex === stop.originalIndex)
+            );
 
-            // Calcular distancias acumuladas
-            let totalHaversineDistance = 0;
-            const segmentDistances = [];
-            for (let i = 0; i < pathStops.length - 1; i++) {
-                const dist = haversineDistance(pathStops[i], pathStops[i+1]);
-                segmentDistances.push(dist);
-                totalHaversineDistance += dist;
-            }
 
-            if (totalHaversineDistance === 0 && pathStops.length > 2) {
-                 // Si todas las paradas están en el mismo punto, distribuir tiempo equitativamente
-                 // entre las intermedias que no tengan tiempo manual.
-                const intermediateStopsWithoutTime = pathStops.filter(s => s.type === 'Intermedia' && !s.time);
-                const numSegmentsForEqualDistribution = intermediateStopsWithoutTime.length + 1;
-                const timePerSegment = totalTripDurationSeconds / numSegmentsForEqualDistribution;
-                
-                let accumulatedTime = startTimeSeconds;
-                for (let i = 1; i < pathStops.length -1; i++) { // Iterar sobre intermedias
-                    if (pathStops[i].type === 'Intermedia' && !pathStops[i].time) {
-                        accumulatedTime += timePerSegment;
-                        pathStops[i].time = secondsToTime(accumulatedTime);
-                    } else if (pathStops[i].type === 'Intermedia' && pathStops[i].time) {
-                        accumulatedTime = timeToSeconds(pathStops[i].time); // Usar tiempo manual como base para siguiente cálculo
-                    }
+            // Iterar por "bloques". Un bloque está definido por dos paradas consecutivas con tiempo fijo (manual o Inicio/Fin).
+            let lastFixedTimeStop = startStop;
+            let lastFixedTimeSeconds = startTimeSeconds;
+
+            for (let i = 1; i < calculationPath.length; i++) {
+                const currentStop = calculationPath[i];
+                let currentBlockEndStop;
+                let currentBlockEndTimeSeconds;
+
+                // Determinar el final del bloque actual
+                if (currentStop.type === 'Fin' || (currentStop.type === 'Intermedia' && currentStop.manuallySetTime && currentStop.time)) {
+                    currentBlockEndStop = currentStop;
+                    currentBlockEndTimeSeconds = timeToSeconds(currentStop.time);
+                } else if (i === calculationPath.length - 1) { // Llegamos al final del path y el último es el endStop (que debe tener tiempo)
+                     currentBlockEndStop = endStop;
+                     currentBlockEndTimeSeconds = endTimeSeconds; // Ya lo teníamos
+                } else {
+                    continue; // Esta parada intermedia no es un fin de bloque, seguir buscando.
                 }
 
-            } else if (totalHaversineDistance > 0) {
-                let accumulatedTimeSeconds = startTimeSeconds;
-                let accumulatedDistance = 0;
-                for (let i = 0; i < pathStops.length - 1; i++) {
-                    const stopA = pathStops[i];
-                    const stopB = pathStops[i+1];
+                // Tenemos un bloque: desde lastFixedTimeStop hasta currentBlockEndStop
+                const blockDurationSeconds = currentBlockEndTimeSeconds - lastFixedTimeSeconds;
+                
+                // Paradas dentro de este bloque que necesitan cálculo (excluyendo las anclas del bloque)
+                const stopsInBlockForCalc = calculationPath.filter(s => 
+                    s.originalIndex > lastFixedTimeStop.originalIndex && 
+                    s.originalIndex < currentBlockEndStop.originalIndex &&
+                    s.type === 'Intermedia' && 
+                    !s.manuallySetTime
+                );
+
+                if (blockDurationSeconds < 0) {
+                     console.warn(`Tiempo inconsistente en bloque: ${lastFixedTimeStop.name} (${secondsToTime(lastFixedTimeSeconds)}) a ${currentBlockEndStop.name} (${secondsToTime(currentBlockEndTimeSeconds)}). Saltando cálculo para este bloque.`);
+                } else if (stopsInBlockForCalc.length > 0) {
+                    // Construir la ruta física para este bloque (incluyendo anclas)
+                    let blockPath = [lastFixedTimeStop, ...stopsInBlockForCalc, currentBlockEndStop];
                     
-                    // Si la siguiente parada (stopB) es intermedia y tiene tiempo manual,
-                    // el tiempo para stopB es ese. El tiempo acumulado se actualiza.
-                    if (stopB.type === 'Intermedia' && stopB.time) {
-                         // Ya tiene tiempo, no calcular. Actualizar accumulatedTimeSeconds para el siguiente tramo.
-                        accumulatedTimeSeconds = timeToSeconds(stopB.time);
-                        accumulatedDistance += segmentDistances[i];
-                    } 
-                    // Si stopB es intermedia y NO tiene tiempo manual, o es la parada de Fin.
-                    else if ( (stopB.type === 'Intermedia' && !stopB.time) || stopB.type === 'Fin') {
-                        if (segmentDistances[i] > 0 || totalHaversineDistance > 0) { // Evitar división por cero si todas las paradas están superpuestas
-                            const proportionOfDistance = (totalHaversineDistance > 0) ? (segmentDistances[i] / totalHaversineDistance) : 0;
-                            // El tiempo para este segmento se calcula sobre el tiempo restante TOTAL del viaje, no proporcionalmente
-                            // a la duración total original si hubo paradas intermedias con tiempo manual.
-                            // Se necesita recalcular el tiempo restante y distancia restante desde la última parada con tiempo fijo.
-                            
-                            // Encontrar la última parada con tiempo fijo antes de B
-                            let lastFixedTimeStop = stopA;
-                            let timeAtLastFixed = timeToSeconds(lastFixedTimeStop.time);
-                            let distanceAfterLastFixed = 0;
-                            let segmentsToConsiderForProportion = [];
+                    let blockTotalHaversineDistance = 0;
+                    const blockSegmentDistances = []; // Distancias entre paradas consecutivas en blockPath
+                    for(let j = 0; j < blockPath.length - 1; j++) {
+                        const dist = haversineDistance(blockPath[j], blockPath[j+1]);
+                        blockSegmentDistances.push(dist);
+                        blockTotalHaversineDistance += dist;
+                    }
 
-                            for (let j = i; j < pathStops.length -1; j++) {
-                                distanceAfterLastFixed += segmentDistances[j];
-                                segmentsToConsiderForProportion.push(segmentDistances[j]);
-                                if (pathStops[j+1].time && pathStops[j+1].type !== 'Fin') { // Siguiente es intermedia con tiempo
-                                    break; 
-                                }
-                                if (pathStops[j+1].type === 'Fin') break;
+                    if (blockTotalHaversineDistance === 0 && blockDurationSeconds > 0) {
+                        // Mismo lugar, distribuir tiempo equitativamente
+                        const timePerInternalStop = blockDurationSeconds / (stopsInBlockForCalc.length + 1);
+                        let accumulatedTimeInBlock = lastFixedTimeSeconds;
+                        for (let j = 0; j < stopsInBlockForCalc.length; j++) {
+                            accumulatedTimeInBlock += timePerInternalStop;
+                            const stopToUpdate = currentRouteStops.find(s => s.originalIndex === stopsInBlockForCalc[j].originalIndex);
+                            if (stopToUpdate && !stopToUpdate.manuallySetTime) { // Doble check
+                                stopToUpdate.time = secondsToTime(Math.round(accumulatedTimeInBlock));
+                            }
+                        }
+                    } else if (blockTotalHaversineDistance > 0 && blockDurationSeconds >=0) { // Permitir duración cero si hay distancia
+                        let accumulatedDistanceInBlock = 0;
+                        for (let j = 0; j < stopsInBlockForCalc.length; j++) {
+                            // Distancia desde lastFixedTimeStop hasta stopsInBlockForCalc[j]
+                            // Necesitamos la distancia acumulada *dentro del blockPath*
+                            // El primer segmento es blockSegmentDistances[0] (lastFixedTimeStop a stopsInBlockForCalc[0])
+                            // El segundo es blockSegmentDistances[1] (stopsInBlockForCalc[0] a stopsInBlockForCalc[1])
+                            // etc.
+                            // accumulatedDistanceInBlock se refiere a la posición de stopsInBlockForCalc[j] en el blockPath
+                            
+                            // Sumar distancia hasta esta parada (stopsInBlockForCalc[j]) desde el inicio del bloque (lastFixedTimeStop)
+                            // stopsInBlockForCalc[j] corresponde al índice j+1 en blockPath
+                            let distToCurrentStopInBlock = 0;
+                            for(let k=0; k <= j; k++) { // Sumar distancias de los segmentos que llevan a esta parada
+                                distToCurrentStopInBlock += blockSegmentDistances[k];
                             }
                             
-                            // Tiempo hasta la siguiente parada fija (o el final)
-                            let timeToEndOfCurrentBlock;
-                            let nextFixedStop = pathStops.slice(i + 1).find(s => s.time && s.type !== 'Inicio') || endStop;
-                            timeToEndOfCurrentBlock = timeToSeconds(nextFixedStop.time) - timeAtLastFixed;
-
-                            if (distanceAfterLastFixed > 0) {
-                                accumulatedTimeSeconds += (timeToEndOfCurrentBlock * (segmentDistances[i] / distanceAfterLastFixed));
-                            } else if (segmentsToConsiderForProportion.length > 0) { // Múltiples paradas en el mismo sitio
-                                 // Distribuir el tiempo equitativamente entre estas paradas sin distancia
-                                const stopsInSameSpotWithoutTime = pathStops.slice(pathStops.indexOf(stopA)+1, pathStops.indexOf(nextFixedStop)+1).filter(s=>!s.time);
-                                if (stopsInSameSpotWithoutTime.length > 0) {
-                                    accumulatedTimeSeconds += timeToEndOfCurrentBlock / (stopsInSameSpotWithoutTime.length);
-                                }
+                            const proportionOfDistance = distToCurrentStopInBlock / blockTotalHaversineDistance;
+                            const calculatedTimeSeconds = lastFixedTimeSeconds + (blockDurationSeconds * proportionOfDistance);
+                            
+                            const stopToUpdate = currentRouteStops.find(s => s.originalIndex === stopsInBlockForCalc[j].originalIndex);
+                             if (stopToUpdate && !stopToUpdate.manuallySetTime) { // Doble check
+                                stopToUpdate.time = secondsToTime(Math.round(calculatedTimeSeconds));
                             }
-                             
-                            if (stopB.type !== 'Fin') { // No sobrescribir el tiempo del Fin
-                                stopB.time = secondsToTime(Math.round(accumulatedTimeSeconds));
-                            }
-                        } else if (stopB.type !== 'Fin') { // Paradas superpuestas, sin tiempo manual
-                            // Esta lógica es más compleja si hay múltiples paradas en el mismo sitio.
-                            // Simplificación: si no hay distancia, y no hay tiempo, no se asigna por ahora
-                            // Una mejor aproximación sería distribuir el tiempo restante equitativamente
-                            // entre las paradas sin tiempo que queden hasta la próxima con tiempo o el final.
-                            // Esta parte fue parcialmente cubierta arriba con "totalHaversineDistance === 0"
                         }
                     }
-                     // Si stopB ya tenía tiempo (manual), accumulatedTimeSeconds ya se actualizó con su tiempo
-                    if (stopB.time) {
-                        accumulatedTimeSeconds = timeToSeconds(stopB.time);
-                    }
                 }
-            }
-            
-            // Actualizar currentRouteStops con los tiempos calculados (si no tenían uno manual)
-            pathStops.forEach(ps => {
-                const originalStop = currentRouteStops.find(s => s.originalIndex === ps.originalIndex);
-                if (originalStop && ps.time && (!originalStop.manuallySetTime || originalStop.type === 'Inicio' || originalStop.type === 'Fin')) {
-                    originalStop.time = ps.time;
-                }
-            });
+                // Preparar para el siguiente bloque
+                lastFixedTimeStop = currentBlockEndStop;
+                lastFixedTimeSeconds = currentBlockEndTimeSeconds;
 
-            visualizeCurrentRoute(); // Para actualizar la lista
+                if (lastFixedTimeStop.type === 'Fin') break; // Ruta completamente procesada
+            }
+            visualizeCurrentRoute();
         }
 
 
         // --- VISUALIZACIÓN DE RUTA ---
         function visualizeCurrentRoute() {
-            // Limpiar marcadores y polilínea anteriores
             stopMarkers.forEach(marker => map.removeLayer(marker));
             stopMarkers = [];
             if (routePolyline) {
@@ -495,10 +501,9 @@
             }
 
             const stopsListElement = document.getElementById('stopsList');
-            stopsListElement.innerHTML = ''; // Limpiar lista
+            stopsListElement.innerHTML = ''; 
             const latLngs = [];
 
-            // Reordenar paradas para visualización: Inicio, Intermedias (por originalIndex), Fin
             let displayStops = [];
             const start = currentRouteStops.find(s => s.type === 'Inicio');
             const end = currentRouteStops.find(s => s.type === 'Fin');
@@ -506,19 +511,21 @@
             
             if(start) displayStops.push(start);
             displayStops.push(...intermediates);
-            if(end && end !== start) displayStops.push(end); // Evitar duplicar si solo hay una parada (inicio)
+            if(end && end !== start) displayStops.push(end); 
 
             displayStops.forEach((stop, index) => {
                 const listItem = document.createElement('li');
                 let stopTimeDisplay = stop.time || "N/A";
+                if(stop.manuallySetTime && stop.time) stopTimeDisplay += " (M)";
+
                 listItem.textContent = `${index + 1}. ${stop.name} (${stop.type}) - ${stopTimeDisplay}`;
                 
-                if (isTracking && index === currentTrackingStopIndex) {
+                const orderedStopsForTracking = [...currentRouteStops].sort((a, b) => a.originalIndex - b.originalIndex);
+                if (isTracking && orderedStopsForTracking[currentTrackingStopIndex] && stop.originalIndex === orderedStopsForTracking[currentTrackingStopIndex].originalIndex) {
                     listItem.classList.add('next-stop-highlight');
                 }
                 stopsListElement.appendChild(listItem);
 
-                // Añadir marcador al mapa
                 if (stop.lat && stop.lng) {
                     latLngs.push([stop.lat, stop.lng]);
                     let icon;
@@ -532,7 +539,6 @@
                         markerHtml = '<div class="custom-marker-content">F</div>';
                         className += ' end-marker';
                     } else {
-                        // Para intermedias, usamos el índice de las paradas intermedias
                         const intermediateDisplayIndex = displayStops.filter(s => s.type === 'Intermedia' && s.originalIndex <= stop.originalIndex).length;
                         markerHtml = `<div class="custom-marker-content">${intermediateDisplayIndex}</div>`;
                         className += ' intermediate-marker';
@@ -551,12 +557,8 @@
                 }
             });
 
-            // Dibujar polilínea si hay al menos 2 paradas
             if (latLngs.length >= 2) {
                 routePolyline = L.polyline(latLngs, { color: 'blue' }).addTo(map);
-                // map.fitBounds(routePolyline.getBounds()); // Ajustar zoom a la ruta
-            } else if (latLngs.length === 1) {
-                 // map.setView(latLngs[0], 15); // Centrar en la única parada
             }
         }
 
@@ -579,7 +581,7 @@
             try {
                 localStorage.setItem(`smartmovepro_route_${routeName}`, JSON.stringify(currentRouteStops));
                 alert(`Ruta "${routeName}" guardada.`);
-                loadSavedRoutesList(); // Actualizar el desplegable
+                loadSavedRoutesList(); 
             } catch (e) {
                 console.error("Error guardando en localStorage:", e);
                 alert("Error al guardar la ruta. El almacenamiento podría estar lleno o no disponible.");
@@ -588,7 +590,7 @@
 
         function loadSavedRoutesList() {
             const select = document.getElementById('savedRoutesSelect');
-            select.innerHTML = '<option value="">-- Cargar Ruta Guardada --</option>'; // Resetear
+            select.innerHTML = '<option value="">-- Cargar Ruta Guardada --</option>'; 
             try {
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
@@ -619,9 +621,17 @@
                 const routeData = localStorage.getItem(`smartmovepro_route_${routeName}`);
                 if (routeData) {
                     currentRouteStops = JSON.parse(routeData);
+                    // Asegurar que las paradas cargadas tengan el flag manuallySetTime si no lo tenían (compatibilidad versiones antiguas)
+                    currentRouteStops.forEach(s => {
+                        if (s.manuallySetTime === undefined) {
+                            if (s.type === 'Inicio' || s.type === 'Fin') s.manuallySetTime = true;
+                            else if (s.type === 'Intermedia' && s.time) s.manuallySetTime = true;
+                            else s.manuallySetTime = false;
+                        }
+                    });
                     visualizeCurrentRoute();
-                    updateCurrentStopTypeInfo(); // Aunque no se esté creando, para consistencia
-                    document.getElementById('routeName').value = routeName; // Poner el nombre cargado en el input de guardar
+                    updateCurrentStopTypeInfo(); 
+                    document.getElementById('routeName').value = routeName; 
                     alert(`Ruta "${routeName}" cargada.`);
                 } else {
                     alert("No se encontró la ruta seleccionada.");
@@ -646,8 +656,7 @@
                 try {
                     localStorage.removeItem(`smartmovepro_route_${routeName}`);
                     alert(`Ruta "${routeName}" borrada.`);
-                    loadSavedRoutesList(); // Actualizar el desplegable
-                    // Si la ruta borrada era la actual, limpiarla (opcional)
+                    loadSavedRoutesList(); 
                     if (document.getElementById('routeName').value === routeName) {
                         resetCurrentRoute();
                         document.getElementById('routeName').value = "";
@@ -666,30 +675,38 @@
                 alert("Carga o crea una ruta con al menos Inicio y Fin para iniciar el seguimiento.");
                 return;
             }
-             if (!currentRouteStops.find(s => s.type === 'Inicio') || !currentRouteStops.find(s => s.type === 'Fin')){
-                alert("La ruta actual no tiene una parada de Inicio y/o Fin bien definida.");
+            const startStop = currentRouteStops.find(s => s.type === 'Inicio');
+            const endStop = currentRouteStops.find(s => s.type === 'Fin');
+
+            if (!startStop || !endStop || !startStop.time || !endStop.time){
+                alert("La ruta actual no tiene una parada de Inicio y/o Fin con horarios definidos.");
                 return;
             }
-             // Asegurarse que todos los horarios necesarios estén presentes
-            for (const stop of currentRouteStops) {
-                if ((stop.type === 'Inicio' || stop.type === 'Fin' || (stop.type === 'Intermedia' && stop.time)) && !isValidTime(stop.time)) {
+            
+            const orderedStopsForTracking = [...currentRouteStops].sort((a,b) => a.originalIndex - b.originalIndex);
+            for (const stop of orderedStopsForTracking) {
+                 // Solo las paradas que se usarán para el cálculo de desvío necesitan tiempo válido.
+                 // Inicio, Fin, y paradas intermedias con tiempo (manual o calculado)
+                if (stop.time && !isValidTime(stop.time)) {
                      alert(`La parada "${stop.name}" tiene un formato de hora inválido. Use HH:MM.`);
                      return;
                 }
+                 // Si una parada no tiene tiempo (intermedia opcional), no bloquea el inicio, pero el desvío podría no calcularse para ese tramo.
             }
 
 
             isTracking = true;
-            currentTrackingStopIndex = 0; // Empezar desde la primera parada
+            currentTrackingStopIndex = 0; 
             updateNextStopDisplay();
-            visualizeCurrentRoute(); // Para resaltar la primera parada
+            visualizeCurrentRoute(); 
 
             document.getElementById('startTrackingBtn').style.display = 'none';
             document.getElementById('stopTrackingBtn').style.display = 'inline-block';
             document.getElementById('resetCurrentRouteBtn').disabled = true;
             document.getElementById('saveRouteBtn').disabled = true;
             document.getElementById('loadRouteBtn').disabled = true;
-             // Deshabilitar controles de edición de ruta mientras se rastrea
+            document.getElementById('autoCalcTimes').disabled = true;
+
 
             if (navigator.geolocation) {
                 geolocWatchId = navigator.geolocation.watchPosition(
@@ -699,7 +716,7 @@
                 );
             } else {
                 alert("Geolocalización no soportada por este navegador.");
-                stopTracking(); // Revertir estado
+                stopTracking(); 
             }
         }
 
@@ -719,20 +736,20 @@
             document.getElementById('resetCurrentRouteBtn').disabled = false;
             document.getElementById('saveRouteBtn').disabled = false;
             document.getElementById('loadRouteBtn').disabled = false;
+            document.getElementById('autoCalcTimes').disabled = false;
 
             document.getElementById('speedDisplay').textContent = '- km/h';
             document.getElementById('deviationDisplay').textContent = '00:00';
             document.getElementById('deviationDisplay').className = 'atiempo';
             document.getElementById('nextStopDisplay').textContent = '-';
-            currentTrackingStopIndex = 0; // Reset
-            visualizeCurrentRoute(); // Quitar resaltado
+            currentTrackingStopIndex = 0; 
+            visualizeCurrentRoute(); 
             alert("Seguimiento detenido.");
         }
 
         function geolocationSuccess(position) {
             const { latitude, longitude, speed } = position.coords;
 
-            // Actualizar marcador del conductor
             if (!driverMarker) {
                 const driverIcon = L.divIcon({
                     className: 'driver-marker',
@@ -743,25 +760,20 @@
             } else {
                 driverMarker.setLatLng([latitude, longitude]);
             }
-            map.panTo([latitude, longitude]); // Opcional: centrar mapa en conductor
+            // map.panTo([latitude, longitude]); // Opcional
 
-            // Mostrar velocidad
-            const speedKmh = speed ? (speed * 3.6).toFixed(1) : '-'; // m/s a km/h
+            const speedKmh = speed ? (speed * 3.6).toFixed(1) : '-'; 
             document.getElementById('speedDisplay').textContent = `${speedKmh} km/h`;
-
-            // Lógica de desvío y avance de parada
-            if (currentRouteStops.length > 0 && currentTrackingStopIndex < currentRouteStops.length) {
-                calculateAndDisplayDeviation({ lat: latitude, lng: longitude });
+            
+            const orderedStopsForTracking = [...currentRouteStops].sort((a,b) => a.originalIndex - b.originalIndex);
+            if (orderedStopsForTracking.length > 0 && currentTrackingStopIndex < orderedStopsForTracking.length) {
+                calculateAndDisplayDeviation({ lat: latitude, lng: longitude }, orderedStopsForTracking);
                 
                 if (!document.getElementById('manualAdvance').checked) {
-                    checkAutoAdvanceStop({ lat: latitude, lng: longitude });
+                    checkAutoAdvanceStop({ lat: latitude, lng: longitude }, orderedStopsForTracking);
                 }
-            } else if (currentTrackingStopIndex >= currentRouteStops.length) {
-                 // Ruta completada
+            } else if (currentTrackingStopIndex >= orderedStopsForTracking.length && orderedStopsForTracking.length > 0) {
                  document.getElementById('nextStopDisplay').textContent = "RUTA COMPLETADA";
-                 // Opcionalmente, detener el seguimiento aquí.
-                 // stopTracking(); 
-                 // alert("¡Ruta completada!");
             }
         }
 
@@ -774,130 +786,85 @@
                 case error.TIMEOUT: message += "Timeout obteniendo posición."; break;
                 default: message += "Error desconocido."; break;
             }
-            alert(message);
-            stopTracking(); // Detener si hay error crítico
+            // No detener el tracking por errores menores de geolocalización si el usuario puede seguir manualmente.
+            // Solo alertar. Si es crítico (ej. PERMISSION_DENIED persistente), el usuario detendrá.
+            const deviationEl = document.getElementById('deviationDisplay');
+            deviationEl.textContent = 'GPS ERR';
+            deviationEl.className = 'atrasado'; // Usar color rojo para error de GPS
         }
 
-        function calculateAndDisplayDeviation(currentLocation) {
-            // Ordenar las paradas por su índice original para el cálculo
-            const orderedStops = [...currentRouteStops].sort((a, b) => a.originalIndex - b.originalIndex);
-
+        function calculateAndDisplayDeviation(currentLocation, orderedStops) {
             let stopA, stopB;
 
-            if (currentTrackingStopIndex === 0) { // Antes de la primera parada (Inicio)
-                stopA = orderedStops.find(s => s.type === 'Inicio');
-                // Si solo hay una parada de inicio y luego fin, B es el fin.
-                // Si hay intermedias, B es la primera parada (que sería el inicio mismo o la primera intermedia).
-                 stopB = orderedStops.find(s => s.originalIndex >= stopA.originalIndex && s.time) || orderedStops.find(s => s.type === 'Fin' && s.time);
-                 // Considerar el tramo desde una "salida teórica" antes del inicio, o directamente el inicio.
-                 // Para simplificar, si estamos antes del inicio, el desvío se calcula respecto al inicio.
-                if (!stopA || !stopA.time) { updateDeviationDisplay(0, 'atiempo'); return; }
+            if (currentTrackingStopIndex === 0) { 
+                stopA = orderedStops.find(s => s.type === 'Inicio'); // La primera parada siempre es Inicio
+                if (!stopA || !stopA.time) { updateDeviationDisplay(0); return; }
 
                 const timeToStopA_seconds = timeToSeconds(stopA.time);
                 const now_seconds = timeToSeconds(getCurrentHHMMSS());
-                const deviationSeconds = now_seconds - timeToStopA_seconds; // Negativo si es temprano, positivo si es tarde
-                // Aquí la convención es: si llego ANTES de T_A, estoy adelantado. Adelantado es POSITIVO.
-                // Hora_Actual - T_esperado. Si Hora_Actual < T_esperado, es negativo (adelantado)
-                // Para que coincida con la lógica del prompt (+ para adelantado), invertimos.
+                const deviationSeconds = now_seconds - timeToStopA_seconds; 
                 updateDeviationDisplay(-deviationSeconds);
                 return;
 
-            } else { // Entre paradas o después de la última
-                // Parada A es la última parada "pasada" o la actual si estamos justo en ella.
-                // Usamos currentTrackingStopIndex para determinar la "siguiente parada".
-                // Parada A es currentTrackingStopIndex - 1
-                // Parada B es currentTrackingStopIndex
-                
-                // Necesitamos las paradas con tiempo para el cálculo.
-                // Encuentra la última parada con tiempo ANTES o IGUAL a currentTrackingStopIndex-1
-                let lastPassedStopWithTimeIndex = -1;
+            } else { 
+                let lastPassedStopWithTime = null;
                 for(let i = currentTrackingStopIndex -1; i >=0; i--) {
-                    if (orderedStops[i] && orderedStops[i].time) {
-                        lastPassedStopWithTimeIndex = i;
+                    if (orderedStops[i] && orderedStops[i].time && isValidTime(orderedStops[i].time)) {
+                        lastPassedStopWithTime = orderedStops[i];
                         break;
                     }
                 }
-                if(lastPassedStopWithTimeIndex === -1 && orderedStops[0] && orderedStops[0].time) { // Caso especial: si solo el inicio tiene tiempo
-                    stopA = orderedStops[0];
-                } else if (lastPassedStopWithTimeIndex !== -1) {
-                     stopA = orderedStops[lastPassedStopWithTimeIndex];
-                }
+                stopA = lastPassedStopWithTime;
 
-
-                // Encuentra la próxima parada con tiempo DESPUÉS o IGUAL a currentTrackingStopIndex
-                let nextScheduledStopIndex = -1;
+                let nextScheduledStop = null;
                  for(let i = currentTrackingStopIndex; i < orderedStops.length; i++) {
-                    if (orderedStops[i] && orderedStops[i].time) {
-                        nextScheduledStopIndex = i;
+                    if (orderedStops[i] && orderedStops[i].time && isValidTime(orderedStops[i].time)) {
+                        nextScheduledStop = orderedStops[i];
                         break;
                     }
                 }
-                if (nextScheduledStopIndex !== -1) {
-                    stopB = orderedStops[nextScheduledStopIndex];
-                }
+                stopB = nextScheduledStop;
 
-                // Si no se encuentra A o B con tiempo, o son la misma, no se puede calcular desvío.
-                if (!stopA || !stopB || !stopA.time || !stopB.time || stopA.originalIndex === stopB.originalIndex) {
+                if (!stopA || !stopB ) { // No hay suficientes paradas con tiempo para calcular
                     // console.warn("No se pueden determinar paradas A y B con tiempo para calcular desvío.", stopA, stopB);
-                    updateDeviationDisplay(0, 'atiempo'); // O un estado indefinido
+                    updateDeviationDisplay(0); 
                     return;
                 }
             }
-
 
             const T_A_seconds = timeToSeconds(stopA.time);
             const T_B_seconds = timeToSeconds(stopB.time);
             const TT_tramo_seconds = T_B_seconds - T_A_seconds;
 
             if (TT_tramo_seconds <= 0 && stopA.originalIndex !== stopB.originalIndex) {
-                // console.warn("Tiempo de tramo no positivo entre", stopA.name, "y", stopB.name);
-                // Podría ser que B es antes que A si la ruta no está ordenada o los tiempos son inconsistentes.
-                // En este caso, calculamos desvío respecto a la próxima parada B.
                 const now_seconds = timeToSeconds(getCurrentHHMMSS());
-                const deviationSeconds = now_seconds - T_B_seconds;
-                updateDeviationDisplay(-deviationSeconds); // Invertido para + adelantado
+                const deviationSeconds = now_seconds - T_B_seconds; // Desvío respecto a la próxima parada B
+                updateDeviationDisplay(-deviationSeconds); 
                 return;
             } else if (TT_tramo_seconds <= 0 && stopA.originalIndex === stopB.originalIndex) {
-                // Estamos "en" la parada stopA (que es la misma que stopB en este escenario)
                 const now_seconds = timeToSeconds(getCurrentHHMMSS());
                 const deviationSeconds = now_seconds - T_A_seconds;
-                updateDeviationDisplay(-deviationSeconds); // Invertido para + adelantado
+                updateDeviationDisplay(-deviationSeconds); 
                 return;
             }
-
 
             const D_total = haversineDistance(stopA, stopB);
             const D_recorrida = haversineDistance(stopA, currentLocation);
 
             let T_esperado_actual_seconds;
             if (D_total > 0) {
-                // Asegurar que D_recorrida no exceda D_total para el cálculo de proporción (puede pasar por imprecisión de GPS)
                 const proportion = Math.min(1, Math.max(0, D_recorrida / D_total));
                 T_esperado_actual_seconds = T_A_seconds + (TT_tramo_seconds * proportion);
-            } else { // Paradas A y B en el mismo lugar
-                // Si D_total es 0, el tiempo esperado es el de A (o B, son iguales en tiempo programado si TT_tramo es 0)
-                // Si TT_tramo > 0 pero D_total es 0, significa que hay un tiempo de espera en el mismo punto.
-                // En este caso, el tiempo esperado es T_A hasta que llegue T_B.
-                // Para simplificar, si estamos en D_total = 0, T_esperado = T_A.
-                // Si la hora actual es > T_A, estamos "atrasados" para ese punto.
-                 T_esperado_actual_seconds = T_A_seconds; // O un promedio, o T_A si estamos más cerca de A.
-                                                      // O T_B si ya pasamos la mitad del tiempo del tramo.
-                                                      // Por ahora, simplificamos a T_A.
-                                                      // Si estamos en un tramo donde D_total es 0 pero TT_tramo > 0 (espera en parada)
-                                                      // T_esperado_actual podría ser simplemente la hora actual, y el desvío 0
-                                                      // hasta que pase T_B. Esto es complejo.
-                                                      // La lógica original asume movimiento.
-                                                      // Si D_total es 0, el tiempo esperado es T_A si Hora_Actual < T_B, sino T_B.
+            } else { 
                  const now = timeToSeconds(getCurrentHHMMSS());
                  if (now < T_A_seconds) T_esperado_actual_seconds = T_A_seconds;
                  else if (now > T_B_seconds) T_esperado_actual_seconds = T_B_seconds;
-                 else T_esperado_actual_seconds = now; // Dentro del tiempo de espera, estamos "a tiempo"
+                 else T_esperado_actual_seconds = now; 
             }
 
             const hora_actual_seconds = timeToSeconds(getCurrentHHMMSS());
             const desvio_seconds = hora_actual_seconds - T_esperado_actual_seconds;
             
-            // Invertir para que positivo sea adelantado
             updateDeviationDisplay(-desvio_seconds);
         }
 
@@ -910,14 +877,13 @@
 
             const deviationEl = document.getElementById('deviationDisplay');
             deviationEl.textContent = displayString;
-            if (deviationSeconds > 0) deviationEl.className = 'adelantado';
-            else if (deviationSeconds < 0) deviationEl.className = 'atrasado';
+            if (deviationSeconds > 5) deviationEl.className = 'adelantado'; // Umbral pequeño para "a tiempo"
+            else if (deviationSeconds < -5) deviationEl.className = 'atrasado';
             else deviationEl.className = 'atiempo';
         }
         
-        function checkAutoAdvanceStop(currentLocation) {
-            const orderedStops = [...currentRouteStops].sort((a, b) => a.originalIndex - b.originalIndex);
-            if (currentTrackingStopIndex >= orderedStops.length) return; // Ya se completó la ruta
+        function checkAutoAdvanceStop(currentLocation, orderedStops) {
+            if (currentTrackingStopIndex >= orderedStops.length) return; 
 
             const nextStopTarget = orderedStops[currentTrackingStopIndex];
             if (!nextStopTarget) return;
@@ -925,48 +891,38 @@
             const distanceToNextStop = haversineDistance(currentLocation, nextStopTarget);
 
             if (distanceToNextStop < PROXIMITY_THRESHOLD) {
-                advanceToNextLogicalStop();
+                advanceToNextLogicalStop(orderedStops);
             } else {
-                // Lógica para "saltar" parada si se desvía significativamente y se acerca más a una posterior.
-                // Esto es más complejo. Por ahora, solo avanza secuencialmente por proximidad.
-                // Podríamos buscar la parada más cercana EN ADELANTE en la ruta.
                 let closestForwardStopIndex = -1;
                 let minDistance = Infinity;
 
                 for (let i = currentTrackingStopIndex + 1; i < orderedStops.length; i++) {
                     const forwardStop = orderedStops[i];
                     const dist = haversineDistance(currentLocation, forwardStop);
-                    if (dist < PROXIMITY_THRESHOLD * 2 && dist < minDistance) { // Umbral mayor para saltos
+                    if (dist < PROXIMITY_THRESHOLD * 2 && dist < minDistance) { 
                         minDistance = dist;
                         closestForwardStopIndex = i;
                     }
                 }
                 if (closestForwardStopIndex !== -1) {
-                    // Comprobar si estamos mucho más cerca de esta que de la actual "nextStopTarget"
-                    if (minDistance < distanceToNextStop / 2 ) { // Arbitrario: si está al menos el doble de cerca
+                    if (minDistance < distanceToNextStop / 2 ) { 
                         console.log(`Salto detectado a la parada: ${orderedStops[closestForwardStopIndex].name}`);
                         currentTrackingStopIndex = closestForwardStopIndex;
-                        updateNextStopDisplay();
-                        visualizeCurrentRoute(); // Re-resaltar
+                        updateNextStopDisplay(orderedStops);
+                        visualizeCurrentRoute(); 
                     }
                 }
             }
         }
         
-        function advanceToNextLogicalStop() {
-             // La "próxima parada lógica" es simplemente la siguiente en el array ordenado.
+        function advanceToNextLogicalStop(orderedStops) {
             currentTrackingStopIndex++;
-            if (currentTrackingStopIndex >= currentRouteStops.length) {
+            if (currentTrackingStopIndex >= orderedStops.length) {
                 document.getElementById('nextStopDisplay').textContent = "RUTA COMPLETADA";
-                // Opcional: detener seguimiento aquí.
-                // setTimeout(() => { // Dar tiempo a ver el mensaje
-                //    if(isTracking) stopTracking(); 
-                //    alert("¡Ruta completada!");
-                // }, 2000);
             } else {
-                updateNextStopDisplay();
+                updateNextStopDisplay(orderedStops);
             }
-            visualizeCurrentRoute(); // Para actualizar resaltado en lista y potencialmente en mapa
+            visualizeCurrentRoute(); 
         }
 
 
@@ -976,46 +932,49 @@
             manualControlsDiv.style.display = manualAdvanceCheckbox.checked ? 'block' : 'none';
         }
 
-        function manualAdvanceStop(direction) { // 1 para siguiente, -1 para anterior
+        function manualAdvanceStop(direction) { 
             if (!isTracking) {
                 alert("Debe iniciar el seguimiento para usar el avance manual.");
                 return;
             }
-            
+            const orderedStops = [...currentRouteStops].sort((a,b) => a.originalIndex - b.originalIndex);
             const newIndex = currentTrackingStopIndex + direction;
 
-            if (newIndex >= 0 && newIndex < currentRouteStops.length) {
+            if (newIndex >= 0 && newIndex < orderedStops.length) {
                 currentTrackingStopIndex = newIndex;
-            } else if (newIndex >= currentRouteStops.length) {
-                currentTrackingStopIndex = currentRouteStops.length; // Marca como completada
+            } else if (newIndex >= orderedStops.length) {
+                currentTrackingStopIndex = orderedStops.length; 
                 document.getElementById('nextStopDisplay').textContent = "RUTA COMPLETADA";
                 alert("Has llegado al final de la ruta (manualmente).");
             } else {
-                // Ya está en la primera parada, no puede retroceder más
                 currentTrackingStopIndex = 0;
             }
-            updateNextStopDisplay();
-            visualizeCurrentRoute(); // Para actualizar resaltado
+            updateNextStopDisplay(orderedStops);
+            visualizeCurrentRoute(); 
         }
         
-        function updateNextStopDisplay() {
-            const orderedStops = [...currentRouteStops].sort((a,b) => a.originalIndex - b.originalIndex);
+        function updateNextStopDisplay(stops = null) {
+            const orderedStopsToUse = stops || [...currentRouteStops].sort((a,b) => a.originalIndex - b.originalIndex);
             const nextStopDisplayEl = document.getElementById('nextStopDisplay');
-            if (currentTrackingStopIndex < orderedStops.length) {
-                const nextStop = orderedStops[currentTrackingStopIndex];
-                nextStopDisplayEl.textContent = `${nextStop.name} (${nextStop.time || 'N/A'})`;
-            } else {
+            if (currentTrackingStopIndex < orderedStopsToUse.length) {
+                const nextStop = orderedStopsToUse[currentTrackingStopIndex];
+                let timeDisplay = nextStop.time || 'N/A';
+                if(nextStop.manuallySetTime && nextStop.time) timeDisplay += " (M)";
+                nextStopDisplayEl.textContent = `${nextStop.name} (${timeDisplay})`;
+            } else if (orderedStopsToUse.length > 0) { // Solo mostrar completada si había paradas
                 nextStopDisplayEl.textContent = "RUTA COMPLETADA";
+            } else {
+                 nextStopDisplayEl.textContent = "-";
             }
         }
 
 
         // --- FUNCIONES UTILITARIAS ---
-        function haversineDistance(coords1, coords2) { // {lat, lng}, {lat, lng}
+        function haversineDistance(coords1, coords2) { 
             if (!coords1 || !coords2 || typeof coords1.lat !== 'number' || typeof coords1.lng !== 'number' || typeof coords2.lat !== 'number' || typeof coords2.lng !== 'number') {
-                return Infinity; // O algún valor que indique error/imposibilidad
+                return Infinity; 
             }
-            const R = 6371e3; // Radio de la Tierra en metros
+            const R = 6371e3; 
             const lat1 = coords1.lat * Math.PI/180;
             const lat2 = coords2.lat * Math.PI/180;
             const deltaLat = (coords2.lat-coords1.lat) * Math.PI/180;
@@ -1025,23 +984,22 @@
                       Math.cos(lat1) * Math.cos(lat2) *
                       Math.sin(deltaLng/2) * Math.sin(deltaLng/2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c; // en metros
+            return R * c; 
         }
 
-        function timeToSeconds(timeStr) { // "HH:MM" o "HH:MM:SS"
-            if (!timeStr || typeof timeStr !== 'string') return 0;
+        function timeToSeconds(timeStr) { 
+            if (!timeStr || typeof timeStr !== 'string' || !isValidTime(timeStr)) return NaN; // Importante devolver NaN si es invalido
             const parts = timeStr.split(':');
-            if (parts.length < 2) return 0;
-            const hours = parseInt(parts[0], 10) || 0;
-            const minutes = parseInt(parts[1], 10) || 0;
-            const seconds = parts[2] ? (parseInt(parts[2], 10) || 0) : 0;
+            const hours = parseInt(parts[0], 10);
+            const minutes = parseInt(parts[1], 10);
+            const seconds = parts[2] ? (parseInt(parts[2], 10)) : 0;
             return hours * 3600 + minutes * 60 + seconds;
         }
 
-        function secondsToTime(totalSeconds) { // Devuelve "HH:MM"
-            const hours = Math.floor(totalSeconds / 3600);
+        function secondsToTime(totalSeconds) { 
+            if (isNaN(totalSeconds) || totalSeconds < 0) return "Err"; // Manejar tiempos inválidos
+            const hours = Math.floor(totalSeconds / 3600) % 24; // Asegurar que las horas no pasen de 23
             const minutes = Math.floor((totalSeconds % 3600) / 60);
-            // const seconds = Math.floor(totalSeconds % 60); // No necesitamos segundos para el display de horario de parada
             return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
         }
         
@@ -1051,8 +1009,7 @@
         }
 
         function isValidTime(timeStr) {
-            if (!timeStr) return false; // Si es opcional y no está, es "válido" en ese contexto, pero para cálculos no.
-                                     // Esta función es para verificar formato para cálculo.
+            if (!timeStr) return false; 
             return /^([01]\d|2[0-3]):([0-5]\d)$/.test(timeStr) || /^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/.test(timeStr);
         }
 
