@@ -343,48 +343,72 @@
         }
 
         function calculateAndSetIntermediateTimes() {
-            if (currentRoute.stops.length < 2) return; // Need at least start and end
+            // Se necesitan al menos una parada de Inicio y una de Fin para este cálculo.
+            if (currentRoute.stops.length < 2) {
+                // console.log("calculateAndSetIntermediateTimes: No hay suficientes paradas (necesita Inicio y Fin).");
+                return;
+            }
 
             const startStop = currentRoute.stops[0];
+            // La parada final siempre es la última en el array según la lógica de adición.
             const endStop = currentRoute.stops[currentRoute.stops.length - 1];
 
-            if (!startStop.time || !endStop.time) return; // Need times for start and end
+            // Asegurarse que la primera es 'start' y la última es 'end', y que ambas tienen horarios definidos.
+            if (startStop.type !== 'start' || endStop.type !== 'end' || !startStop.time || !endStop.time) {
+                // console.log("calculateAndSetIntermediateTimes: La ruta no tiene una parada de Inicio o Fin válida con horario definido.");
+                return; 
+            }
 
             const startTimeSeconds = parseTimeToSeconds(startStop.time);
             const endTimeSeconds = parseTimeToSeconds(endStop.time);
-            const totalDurationSeconds = endTimeSeconds - startTimeSeconds;
+            const totalRouteDurationSeconds = endTimeSeconds - startTimeSeconds;
 
-            if (totalDurationSeconds <= 0) return; // Invalid duration
-
-            let intermediateStops = currentRoute.stops.slice(1, -1);
-            let stopsForDistanceCalc = [startStop, ...intermediateStops, endStop];
-            
-            let totalHaversineDistance = 0;
-            let segmentDistances = [];
-
-            for (let i = 0; i < stopsForDistanceCalc.length - 1; i++) {
-                const dist = haversineDistance(stopsForDistanceCalc[i], stopsForDistanceCalc[i+1]);
-                segmentDistances.push(dist);
-                totalHaversineDistance += dist;
+            // La duración total de la ruta debe ser positiva.
+            if (totalRouteDurationSeconds <= 0) {
+                // console.log("calculateAndSetIntermediateTimes: La duración total de la ruta (Fin - Inicio) no es positiva.");
+                return;
             }
 
-            if (totalHaversineDistance === 0) return; // Avoid division by zero
+            // Distancia total en línea recta (Haversine) entre la parada de Inicio y la parada de Fin de la ruta.
+            const totalRouteHaversineDistance = haversineDistance(startStop, endStop);
 
-            let accumulatedTimeSeconds = startTimeSeconds;
-            let accumulatedDistance = 0;
+            // Si la distancia total entre Inicio y Fin es cero (están en el mismo punto):
+            if (totalRouteHaversineDistance === 0) {
+                // console.log("calculateAndSetIntermediateTimes: La distancia total de la ruta (Inicio-Fin) es cero.");
+                // A todas las paradas intermedias sin tiempo se les podría asignar el horario de inicio.
+                for (let i = 1; i < currentRoute.stops.length - 1; i++) {
+                    const intermediateStop = currentRoute.stops[i];
+                    if (intermediateStop.type === 'intermediate' && !intermediateStop.time) {
+                        intermediateStop.time = startStop.time;
+                    }
+                }
+                return;
+            }
 
-            for (let i = 0; i < intermediateStops.length; i++) {
-                if (!intermediateStops[i].time) { // Only calculate if no manual time set
-                    // The relevant segment for this intermediate stop is from previous stop to it.
-                    // Distance from start to this intermediate stop (i+1 in stopsForDistanceCalc)
-                    accumulatedDistance += segmentDistances[i]; // segmentDistances[0] is start to first intermediate
-                    const timeRatio = accumulatedDistance / totalHaversineDistance;
-                    const calculatedTimeSeconds = startTimeSeconds + (totalDurationSeconds * timeRatio);
-                    intermediateStops[i].time = formatSecondsToHHMM(Math.round(calculatedTimeSeconds));
+            // Iterar solo sobre las paradas intermedias.
+            // Estas son las paradas desde el índice 1 hasta el penúltimo índice.
+            for (let i = 1; i < currentRoute.stops.length - 1; i++) {
+                const intermediateStop = currentRoute.stops[i];
+                
+                // Solo calcular si es una parada intermedia Y no tiene un horario ya asignado manualmente.
+                if (intermediateStop.type === 'intermediate' && !intermediateStop.time) {
+                    // Distancia en línea recta desde la parada de Inicio de la ruta hasta ESTA parada intermedia.
+                    const distanceFromStartToIntermediate = haversineDistance(startStop, intermediateStop);
+                    
+                    // Proporción de esta distancia respecto a la distancia total de la ruta (Inicio-Fin).
+                    const distanceRatio = distanceFromStartToIntermediate / totalRouteHaversineDistance;
+                    
+                    // Tiempo estimado para esta parada intermedia.
+                    // Se calcula sumando al tiempo de inicio una porción del tiempo total del viaje,
+                    // proporcional a la fracción de la distancia que esta parada representa.
+                    let calculatedTimeSeconds = startTimeSeconds + (totalRouteDurationSeconds * distanceRatio);
+                    
+                    // Convertir los segundos calculados de vuelta a formato HH:MM y asignarlo.
+                    intermediateStop.time = formatSecondsToHHMM(Math.round(calculatedTimeSeconds));
                 }
             }
-            // Re-integrate potentially modified intermediate stops
-            currentRoute.stops = [startStop, ...intermediateStops, endStop];
+            // No es necesario retornar 'currentRoute.stops' ya que el array se modifica por referencia.
+            // La UI se actualizará por la llamada a updateStopListUI() después de esta función.
         }
 
         function renderRouteOnMap() {
