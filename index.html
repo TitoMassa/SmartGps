@@ -166,13 +166,19 @@
 
         <div class="control-section" id="routeCreationSection">
             <h3>Crear/Modificar Ruta</h3>
-            <p style="font-size: 0.8em;">Toca el mapa para agregar paradas: Inicio -> Fin -> Intermedias.</p>
+            <p style="font-size: 0.8em;">Toca el mapa para agregar paradas. Toca una parada existente para editarla.</p>
             <label for="pointName">Nombre Parada:</label>
             <input type="text" id="pointName" placeholder="Ej: Estación Central">
             
             <label for="pointTime">Horario Programado (DD/MM/AAAA HH:MM):</label>
             <input type="datetime-local" id="pointTime">
 
+            <div id="editPointControls" style="display:none; margin-top:10px;">
+                <button onclick="updateSelectedPoint()" class="secondary">Actualizar Parada</button>
+                <button onclick="deleteSelectedPoint()" class="danger">Borrar Parada Seleccionada</button>
+                <button onclick="cancelEdit()">Cancelar Edición</button>
+            </div>
+            <hr style="margin: 15px 0;">
             <input type="checkbox" id="autoCalcTimes" checked>
             <label for="autoCalcTimes" style="display:inline;">Calcular horarios intermedios automáticamente</label>
             <br><br>
@@ -228,6 +234,7 @@
         let isTracking = false;
         let currentSegmentStartIndex = 0; // Index in routePoints for the start of the current segment
         let lastKnownPosition = null;
+        let currentlyEditingPoint = null; // Para rastrear el punto seleccionado para edición
 
         const CACHE_PREFIX = 'smartMovePro_route_';
         const ROUTE_QUEUE_CACHE_KEY = 'smartMovePro_routeQueue';
@@ -280,11 +287,29 @@
         }
 
         // --- Route Creation Logic ---
-        function onMapClick(e) {
+                function onMapClick(e) {
             if (isTracking) {
                 alert("Detén el seguimiento para modificar la ruta.");
                 return;
             }
+            // Si se está editando un punto y se hace clic en el mapa, cancelar la edición.
+            // Esta condición evita que onMapClick interfiera si el clic fue en un marcador (manejado por el 'click' del marcador).
+            if (currentlyEditingPoint && e.originalEvent.target !== currentlyEditingPoint.marker._icon) { 
+                 // Comprobación un poco más robusta para no cancelar si el clic es en el propio marcador que se está editando
+                 let targetIsMarkerIcon = false;
+                 try {
+                    if (e.originalEvent.target.closest('.leaflet-marker-icon')) {
+                        targetIsMarkerIcon = true;
+                    }
+                 } catch(err) {/*ignore errors from closest if not applicable*/}
+
+                if (!targetIsMarkerIcon) {
+                    cancelEdit();
+                    // No retornar aquí, permitir que se añada un nuevo punto si se desea.
+                }
+            }
+
+            // ... resto de onMapClick
 
             const nameInput = document.getElementById('pointName');
             const timeInput = document.getElementById('pointTime');
@@ -357,6 +382,11 @@
                     alert("Detén el seguimiento para modificar la ruta.");
                     return;
                 }
+            newPoint.marker.on('click', function() {
+                if (isTracking) return; // No editar durante el seguimiento
+                activateEditModeForPoint(newPoint);
+            });
+                
                 const marker = event.target;
                 const position = marker.getLatLng();
                 const point = routePoints.find(p => p.marker === marker);
@@ -494,6 +524,124 @@
                 return;
             }
 
+                    // --- Funciones de Edición ---
+
+    function formatDateTimeForInput(date) {
+            if (!date || isNaN(new Date(date).getTime())) return "";
+            const d = new Date(date);
+            // Ajustar por la diferencia de zona horaria para que datetime-local muestre la hora correcta
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            return d.toISOString().slice(0, 16);
+        }
+
+        function activateEditModeForPoint(point) {
+            if (isTracking) {
+                alert("Detén el seguimiento para editar la ruta.");
+                return;
+            }
+            currentlyEditingPoint = point;
+            document.getElementById('pointName').value = point.name;
+            document.getElementById('pointTime').value = point.scheduledTime ? formatDateTimeForInput(point.scheduledTime) : "";
+            
+            document.getElementById('editPointControls').style.display = 'block';
+            document.getElementById('pointName').focus();
+
+            // Opcional: Deshabilitar creación de nuevos puntos mientras se edita uno específico.
+            // map.off('click', onMapClick); // Considerar si esto es deseable.
+        }
+
+        function cancelEdit() {
+            currentlyEditingPoint = null;
+            document.getElementById('pointName').value = "";
+            document.getElementById('pointTime').value = "";
+            document.getElementById('editPointControls').style.display = 'none';
+            // map.on('click', onMapClick); // Re-habilitar si se deshabilitó
+        }
+
+        function updateSelectedPoint() {
+            if (!currentlyEditingPoint) return;
+
+            const newName = document.getElementById('pointName').value;
+            const newTimeValue = document.getElementById('pointTime').value;
+            
+            if (!newName) {
+                alert("El nombre de la parada no puede estar vacío.");
+                return;
+            }
+
+            // Validar tiempo si es Start o End, o si se ingresó un valor
+            let newScheduledTime = null;
+            if (newTimeValue) {
+                newScheduledTime = new Date(newTimeValue);
+                if (isNaN(newScheduledTime.getTime())) {
+                    alert("Formato de fecha/hora inválido.");
+                    return;
+                }
+            }
+
+            if ((currentlyEditingPoint.type === 'start' || currentlyEditingPoint.type === 'end') && !newScheduledTime) {
+                alert(`El horario es obligatorio para el punto de ${currentlyEditingPoint.type === 'start' ? 'Inicio' : 'Fin'}.`);
+                return;
+            }
+
+            currentlyEditingPoint.name = newName;
+            currentlyEditingPoint.scheduledTime = newScheduledTime;
+
+            // Actualizar el ícono del marcador si el texto depende del nombre (no en este caso, pero sí del tipo)
+            // Si el tipo de punto pudiera cambiar, aquí se actualizaría el ícono.
+            // Por ahora, solo actualizamos datos y recalculamos.
+
+            if (document.getElementById('autoCalcTimes').checked) {
+                calculateAndApplyIntermediateTimes(); // Recalcular si los tiempos de inicio/fin cambian
+            }
+            redrawRouteLine();
+            updateStopsList();
+            alert(`Parada "${newName}" actualizada.`);
+            cancelEdit(); // Salir del modo edición
+        }
+
+        function deleteSelectedPoint() {
+            if (!currentlyEditingPoint) return;
+
+            if ((currentlyEditingPoint.type === 'start' && routePoints.filter(p => p.type === 'start').length <= 1) ||
+                (currentlyEditingPoint.type === 'end' && routePoints.filter(p => p.type === 'end').length <= 1)) {
+                if (routePoints.length > 1 && !(routePoints.length === 2 && (currentlyEditingPoint.type === 'start' || currentlyEditingPoint.type === 'end'))) {
+                     alert("No puedes borrar el único punto de Inicio o Fin si hay otras paradas. Define un nuevo Inicio/Fin primero o borra las intermedias.");
+                     return;
+                }
+                // Permitir borrar si solo quedan 2 puntos y se borra uno de ellos, o si es el único punto.
+            }
+
+
+            if (confirm(`¿Seguro que quieres borrar la parada "${currentlyEditingPoint.name}"?`)) {
+                map.removeLayer(currentlyEditingPoint.marker);
+                const index = routePoints.indexOf(currentlyEditingPoint);
+                if (index > -1) {
+                    routePoints.splice(index, 1);
+                }
+
+                // Re-numerar marcadores intermedios si es necesario
+                renumberIntermediateMarkers();
+
+                if (document.getElementById('autoCalcTimes').checked) {
+                    calculateAndApplyIntermediateTimes();
+                }
+                redrawRouteLine();
+                updateStopsList();
+                alert(`Parada "${currentlyEditingPoint.name}" borrada.`);
+            }
+            cancelEdit(); // Salir del modo edición
+        }
+
+        function renumberIntermediateMarkers() {
+            let intermediateCounter = 1;
+            routePoints.forEach(p => {
+                if (p.type === 'intermediate') {
+                    p.marker.setIcon(createDivIcon(intermediateCounter++, null, 'intermediate'));
+                }
+            });
+        }
+
             // Sort points for display: Start, Intermediates (by originalIndex), End
             const displayOrderPoints = [];
             const start = routePoints.find(p => p.type === 'start');
@@ -609,6 +757,9 @@
                         }
                         updateStopsList();
                     }
+                    newPoint.marker.on('click', function() {
+                    if (isTracking) return;
+                    activateEditModeForPoint(newPoint);
                 });
                 routePoints.push(newPoint);
             });
