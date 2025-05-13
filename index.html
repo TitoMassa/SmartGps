@@ -805,7 +805,7 @@
                     }
                 }
                 // Time Deviation Calculation (even if stop not reached yet)
-                calculateTimeDeviation(userLatLng);
+                calculateTimeDeviation(position);
             } else { // Reached final destination or beyond
                 // This state should ideally be caught by advanceToNextStop
                 document.getElementById('nextStopDisplay').textContent = "Ruta Completada";
@@ -870,15 +870,13 @@
             updateStopsList(); // Re-render list to apply class based on currentSegmentStartIndex
         }
 
-
-        function calculateTimeDeviation(currentUserLatLng) {
-            if (currentSegmentStartIndex >= routePoints.length - 1) return; // Past the last point
+        function calculateTimeDeviation(currentUserGeoPosition) { // currentUserGeoPosition is the raw geolocation object
+            if (currentSegmentStartIndex >= routePoints.length - 1) return; 
 
             const pointA = routePoints[currentSegmentStartIndex];
             const pointB = routePoints[currentSegmentStartIndex + 1];
 
             if (!pointA.scheduledTime || !pointB.scheduledTime) {
-                // console.warn("Horarios no definidos para el segmento actual. No se puede calcular desvío.");
                 document.getElementById('timeDeviation').textContent = "N/A";
                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
                 return;
@@ -889,34 +887,114 @@
             const segmentTotalScheduledMillis = scheduledTimeB.getTime() - scheduledTimeA.getTime();
 
             if (segmentTotalScheduledMillis <= 0) {
-                // console.warn("Duración del segmento no positiva.");
-                 document.getElementById('timeDeviation').textContent = "ERR";
-                 document.getElementById('timeDeviation').style.color = "#FFA500"; // Orange for error
+                 document.getElementById('timeDeviation').textContent = "ERR_DUR"; // Error Duration
+                 document.getElementById('timeDeviation').style.color = "#FFA500"; 
                 return;
             }
 
             const latLngA = L.latLng(pointA.lat, pointA.lng);
             const latLngB = L.latLng(pointB.lat, pointB.lng);
+            const currentUserLatLng = L.latLng(currentUserGeoPosition.coords.latitude, currentUserGeoPosition.coords.longitude);
 
-            const distanceTotalSegment = latLngA.distanceTo(latLngB);
-            if (distanceTotalSegment === 0) { // Avoid division by zero if points overlap
-                // If points overlap and time difference exists, effectively at pointB if past pointA's time
-                // This is an edge case. For simplicity, show on time or based on whether current time is past A.
+            const distanceTotalSegment = latLngA.distanceTo(latLngB); 
+            
+            if (distanceTotalSegment < 1) { // Segment too short, effectively at the point
                 const now = new Date();
-                const deviationMillis = now.getTime() - scheduledTimeA.getTime(); // Compare to start of segment
+                // If very close to A or B, deviation is simply diff with that point's time
+                // This logic could be refined, but for now, base on A.
+                let deviationMillis;
+                if (now.getTime() < scheduledTimeA.getTime()) { // Before start of segment
+                    deviationMillis = scheduledTimeA.getTime() - now.getTime(); // Positive, ahead of A
+                } else if (now.getTime() > scheduledTimeB.getTime()) { // After end of segment
+                     deviationMillis = scheduledTimeB.getTime() - now.getTime(); // Negative, behind B
+                } else { // Within scheduled time of the (zero-length) segment
+                    // Consider "on time" or base on proximity to A's or B's time
+                    deviationMillis = scheduledTimeA.getTime() - now.getTime(); 
+                }
                 displayDeviation(deviationMillis);
                 return;
             }
+
+            // More robust progress calculation using relative positions
+            // This is a simplified geometric approach suitable for LatLng without full vector projection
+            // It handles cases where the user might be "before" A or "after" B along the line.
             
-            const distanceCoveredInSegment = latLngA.distanceTo(currentUserLatLng);
-            let progressPercentage = distanceCoveredInSegment / distanceTotalSegment;
-            progressPercentage = Math.max(0, Math.min(1, progressPercentage)); // Clamp between 0 and 1
+            // Distances from current position to segment endpoints
+            const distToA = currentUserLatLng.distanceTo(latLngA);
+            const distToB = currentUserLatLng.distanceTo(latLngB);
+
+            let progressPercentage;
+
+            // Check if current position is (roughly) "beyond" B relative to A
+            // If distToA > distanceTotalSegment AND distToB < distToA:
+            // This means user is further from A than B is from A, and also closer to B than to A.
+            // This implies user is likely past B or very close to B on the "far side" from A.
+            if (distToA > distanceTotalSegment && distToB < distToA && (distToA > distToB + distanceTotalSegment - 10) ) { // -10 for some tolerance
+                 progressPercentage = 1.0;
+            }
+            // Check if current position is (roughly) "before" A relative to B
+            // If distToB > distanceTotalSegment AND distToA < distToB:
+            // This means user is further from B than A is from B, and also closer to A than to B.
+            // This implies user is likely before A or very close to A on the "far side" from B.
+            else if (distToB > distanceTotalSegment && distToA < distToB && (distToB > distToA + distanceTotalSegment - 10) ) {
+                 progressPercentage = 0.0;
+            }
+            else {
+                // General case: Use the ratio of distances along the path A-Current-B.
+                // This inherently handles being off the direct line segment AB.
+                // If on segment AB, then distToA + distToB approx equals distanceTotalSegment.
+                // progress = distToA / distanceTotalSegment would be fine.
+                //
+                // Using (distToA / (distToA + distToB)) for progress:
+                // If at A: 0 / (0 + d_AB) = 0.
+                // If at B: d_AB / (d_AB + 0) = 1.
+                // If halfway on segment: (d_AB/2) / (d_AB/2 + d_AB/2) = 0.5. This is good.
+                //
+                // This provides a stable progress value even if slightly off-route.
+                // However, it doesn't perfectly project onto the line segment AB if far off.
+                // For true projection, vector math is needed. Let's use a robust clamping
+                // of the original distance-from-A method, but first check if we are
+                // clearly "outside" the segment along its line.
+
+                // A common way to get projected progress 't':
+                // Convert to a local 2D Cartesian system or use a library function if available.
+                // Since we don't have that easily, we'll stick to a refined distance-based logic.
+                // The critical case is being collinear but outside the segment.
+
+                // Let's use an approach based on comparing sum of partial distances to total.
+                // If (distToA + distToB) is very close to distanceTotalSegment, user is on or near the line.
+                // In this case, progress = distToA / distanceTotalSegment is good.
+                const sumDistances = distToA + distToB;
+                if (Math.abs(sumDistances - distanceTotalSegment) < distanceTotalSegment * 0.1 || distanceTotalSegment < 200 ) { // If fairly collinear or short segment
+                    // Closer to being on the line segment
+                    // If distToA + distanceTotalSegment is very close to distToB, user is "before" A.
+                    if (Math.abs(distToA + distanceTotalSegment - distToB) < 20 ) { // 20m tolerance
+                         progressPercentage = 0;
+                    } 
+                    // If distToB + distanceTotalSegment is very close to distToA, user is "after" B.
+                    else if (Math.abs(distToB + distanceTotalSegment - distToA) < 20 ) { // 20m tolerance
+                         progressPercentage = 1;
+                    }
+                    else {
+                         progressPercentage = distToA / distanceTotalSegment;
+                    }
+                } else {
+                    // User is significantly off the direct line segment.
+                    // Here, using distToA / distanceTotalSegment might be misleadingly large or small.
+                    // A safer bet might be to use the ratio distToA / (distToA + distToB),
+                    // which represents progress along the path A-Current-B.
+                    progressPercentage = distToA / (distToA + distToB);
+                }
+            }
+
+            // Clamp progress strictly between 0 and 1.
+            progressPercentage = Math.max(0, Math.min(1, progressPercentage));
 
             const expectedTimeElapsedMillis = segmentTotalScheduledMillis * progressPercentage;
             const expectedTimeAtCurrentPosition = new Date(scheduledTimeA.getTime() + expectedTimeElapsedMillis);
 
             const currentTime = new Date();
-            const deviationMillis = expectedTimeAtCurrentPosition.getTime() - currentTime.getTime(); // Positive if ahead, Negative if behind
+            const deviationMillis = expectedTimeAtCurrentPosition.getTime() - currentTime.getTime(); 
 
             displayDeviation(deviationMillis);
         }
