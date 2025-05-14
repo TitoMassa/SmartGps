@@ -963,7 +963,7 @@
 
         function handlePositionUpdate(position) {
             lastKnownPosition = position;
-            const { latitude, longitude, speed } = position.coords;
+            const { latitude, longitude, speed, heading } = position.coords; // heading puede ser útil
             const userLatLng = L.latLng(latitude, longitude);
 
             if (!userMarker) {
@@ -971,28 +971,100 @@
             } else {
                 userMarker.setLatLng(userLatLng);
             }
-            // map.panTo(userLatLng); // Can be annoying if user is also panning map
 
             const speedKmh = speed ? (speed * 3.6).toFixed(1) : 0;
             document.getElementById('speedDisplay').textContent = `Velocidad: ${speedKmh} KM/H`;
 
             if (currentSegmentStartIndex < routePoints.length - 1) {
-                const nextStop = routePoints[currentSegmentStartIndex + 1]; // routePoints is now tracking order
-                const distanceToNextStop = userLatLng.distanceTo(L.latLng(nextStop.lat, nextStop.lng));
-                
                 const manualNav = document.getElementById('manualStopNav').checked;
 
                 if (!manualNav) {
-                    const detectionRadius = 50; 
-                    if (distanceToNextStop < detectionRadius) {
+                    // --- Lógica de Avance Automático Mejorada ---
+                    const currentTargetStop = routePoints[currentSegmentStartIndex + 1]; // La parada objetivo actual
+                    const distanceToCurrentTarget = userLatLng.distanceTo(L.latLng(currentTargetStop.lat, currentTargetStop.lng));
+                    const detectionRadius = 75; // Aumentar un poco el radio base
+                    const lookAheadLimit = Math.min(routePoints.length -1, currentSegmentStartIndex + 4); // Mirar hasta 3 paradas adelante
+
+                    let advanced = false;
+
+                    // 1. Si estamos muy cerca del objetivo actual, avanzar.
+                    if (distanceToCurrentTarget < detectionRadius) {
+                        console.log(`Avance por proximidad directa a ${currentTargetStop.name}`);
                         advanceToNextStop();
+                        advanced = true;
                     } else {
-                        if (currentSegmentStartIndex < routePoints.length - 2) {
-                            const stopAfterNext = routePoints[currentSegmentStartIndex + 2];
-                            const distanceToStopAfterNext = userLatLng.distanceTo(L.latLng(stopAfterNext.lat, stopAfterNext.lng));
-                            if (distanceToStopAfterNext < distanceToNextStop && distanceToStopAfterNext < detectionRadius * 2.5) { // Increased multiplier for skip
-                                console.log(`Saltando ${nextStop.name}, más cerca de ${stopAfterNext.name}`);
-                                advanceToNextStop(); 
+                        // 2. Lógica de "salto" o "pasada": Buscar la parada no visitada más cercana *adelante*
+                        let closestFutureStop = null;
+                        let minDistanceToFutureStop = Infinity;
+                        let bestFutureStopIndex = -1;
+
+                        // Iterar desde la parada siguiente a la actual (currentTargetStop) hasta el límite de "mirar adelante"
+                        for (let i = currentSegmentStartIndex + 1; i < lookAheadLimit; i++) {
+                            if (i >= routePoints.length -1) break; // No ir más allá del penúltimo punto (que lleva al último)
+
+                            const futureStop = routePoints[i];
+                            const distToThisFutureStop = userLatLng.distanceTo(L.latLng(futureStop.lat, futureStop.lng));
+
+                            if (distToThisFutureStop < minDistanceToFutureStop) {
+                                minDistanceToFutureStop = distToThisFutureStop;
+                                closestFutureStop = futureStop;
+                                bestFutureStopIndex = i;
+                            }
+                        }
+                        
+                        // Si se encontró una parada futura más cercana que la actual *Y* estamos a una distancia razonable de ella
+                        // Y (opcionalmente) nos estamos alejando de la parada objetivo actual.
+                        if (closestFutureStop && bestFutureStopIndex > currentSegmentStartIndex + 1) { // Asegura que es realmente una parada *posterior* al objetivo actual
+                            if (minDistanceToFutureStop < distanceToCurrentTarget && minDistanceToFutureStop < detectionRadius * 2.5) {
+                                // Aquí se podría añadir una comprobación del vector de movimiento (si heading está disponible y es fiable)
+                                // para ver si nos alejamos del currentTargetStop y nos acercamos a closestFutureStop.
+                                // Por ahora, la condición de distancias es la principal.
+
+                                console.log(`Saltando a ${closestFutureStop.name} (índice ${bestFutureStopIndex -1}). Estaba en ${currentTargetStop.name}.`);
+                                // Avanzar currentSegmentStartIndex HASTA el segmento ANTERIOR al closestFutureStop.
+                                // Si closestFutureStop es routePoints[k], queremos que currentSegmentStartIndex sea k-1.
+                                currentSegmentStartIndex = bestFutureStopIndex - 1; 
+                                advanceToNextStop(); // Esto incrementará currentSegmentStartIndex a `bestFutureStopIndex`
+                                advanced = true;
+                            }
+                        }
+                        
+                        // 3. Detección de "pasada" del segmento actual si no se activó lo anterior
+                        // (Esta lógica es similar a la de `calculateTimeDeviation` para el progreso)
+                        if (!advanced && routePoints[currentSegmentStartIndex] && routePoints[currentSegmentStartIndex+1]) {
+                            const pointA = routePoints[currentSegmentStartIndex];
+                            const pointB = routePoints[currentSegmentStartIndex + 1]; // == currentTargetStop
+                            const latLngA = L.latLng(pointA.lat, pointA.lng);
+                            const latLngB = L.latLng(pointB.lat, pointB.lng);
+                            const totalSegmentDist = latLngA.distanceTo(latLngB);
+                            const distUserToA = userLatLng.distanceTo(latLngA);
+                            const distUserToB = userLatLng.distanceTo(latLngB);
+
+                            // Si el usuario está más cerca de B que de A, y la suma de distancias
+                            // (user-A + user-B) no es mucho mayor que la distancia A-B (indicando que está cerca de la línea),
+                            // y está más allá del 75% del segmento.
+                            const progressAlongSegmentLine = distUserToA / totalSegmentDist;
+
+                            if (progressAlongSegmentLine > 0.90 && distUserToB < distUserToA && distUserToB < totalSegmentDist * 0.5) {
+                                // Considerar que pasó el 90% del segmento, está más cerca del final y no demasiado lejos de la línea.
+                                // El umbral de 0.90 y las otras condiciones pueden necesitar ajuste.
+                                console.log(`Avance por pasar el 90% del segmento hacia ${pointB.name}`);
+                                advanceToNextStop();
+                                advanced = true;
+                            }
+                        }
+                    }
+                }
+                // --- Fin Lógica de Avance Automático Mejorada ---
+                
+                calculateTimeDeviation(position);
+            } else { 
+                document.getElementById('nextStopDisplay').textContent = "Ruta Completada";
+                document.getElementById('timeDeviation').textContent = "00:00"; 
+                document.getElementById('timeDeviation').style.color = "#FFFFFF";
+                if(isTracking) stopTracking(true); 
+            }
+        }
                             }
                         }
                     }
