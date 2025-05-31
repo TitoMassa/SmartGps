@@ -62,7 +62,7 @@
             font-size: 0.9em;
         }
 
-        input[type="text"], input[type="datetime-local"], select {
+        input[type="text"], input[type="datetime-local"], input[type="number"], select {
             width: calc(100% - 12px);
             padding: 8px;
             margin-bottom: 10px;
@@ -186,6 +186,12 @@
         </div>
 
         <div class="control-section">
+            <h3>Configuración de Visualización</h3>
+            <label for="stopRadiusInput">Radio de Paradas (metros):</label>
+            <input type="number" id="stopRadiusInput" value="50" min="10" max="500" onchange="updateGlobalStopRadiusSettings()">
+        </div>
+
+        <div class="control-section">
             <h3>Lista de Paradas</h3>
             <div id="stopsList">No hay paradas.</div>
         </div>
@@ -228,7 +234,7 @@
     <script>
         'use strict';
         let map;
-        let routePoints = []; // {lat, lng, name, type, scheduledTime, marker, originalIndex}
+        let routePoints = []; // {lat, lng, name, type, scheduledTime, marker, originalIndex, radiusCircle}
         let routeLine;
         let userMarker;
         let trackingIntervalId;
@@ -236,6 +242,7 @@
         let currentSegmentStartIndex = 0; 
         let lastKnownPosition = null;
         let currentlyEditingPoint = null; 
+        let currentStopRadius = 50; // Default radius in meters
 
         const CACHE_PREFIX = 'smartMovePro_route_';
         const ROUTE_QUEUE_CACHE_KEY = 'smartMovePro_routeQueue';
@@ -282,6 +289,7 @@
                     console.warn("Error getting current location. Using default.");
                 });
             }
+            document.getElementById('stopRadiusInput').value = currentStopRadius; // Initialize input
         }
         
         // --- Funciones de Edición ---
@@ -357,7 +365,7 @@
             const startPointsCount = routePoints.filter(p => p.type === 'start').length;
             const endPointsCount = routePoints.filter(p => p.type === 'end').length;
         
-            if (numPoints > 2) { // Only apply restrictions if more than 2 points exist
+            if (numPoints > 2) { 
                 if (isStartPoint && startPointsCount <= 1) {
                     alert("No puedes borrar el único punto de Inicio si hay otras paradas. Define un nuevo Inicio primero o borra las paradas intermedias/fin.");
                     return;
@@ -370,12 +378,14 @@
         
             if (confirm(`¿Seguro que quieres borrar la parada "${currentlyEditingPoint.name}"?`)) {
                 map.removeLayer(currentlyEditingPoint.marker);
+                if (currentlyEditingPoint.radiusCircle) {
+                    map.removeLayer(currentlyEditingPoint.radiusCircle);
+                }
                 const index = routePoints.indexOf(currentlyEditingPoint);
                 if (index > -1) {
                     routePoints.splice(index, 1);
                 }
         
-                // Update types if necessary (e.g., an intermediate becomes start/end)
                 if (routePoints.length > 0) {
                     if (!routePoints.some(p => p.type === 'start') && routePoints.length > 0) {
                         routePoints[0].type = 'start';
@@ -385,7 +395,6 @@
                         routePoints[routePoints.length - 1].type = 'end';
                         routePoints[routePoints.length - 1].marker.setIcon(createDivIcon('F', null, 'end'));
                     } else if (routePoints.length === 1 && routePoints[0].type !== 'start') {
-                        // If only one point remains, it must be 'start' conceptually
                          routePoints[0].type = 'start';
                          routePoints[0].marker.setIcon(createDivIcon('I', null, 'start'));
                     }
@@ -466,7 +475,7 @@
                 }
             }
             
-            if (!pointNameValue) { // If input is empty, suggest default name
+            if (!pointNameValue) { 
                 if (type === 'start') pointNameValue = "Inicio";
                 else if (type === 'end') pointNameValue = "Final";
                 else pointNameValue = `Parada ${pointText}`;
@@ -490,7 +499,6 @@
                 if (endIdx !== -1) insertionIndex = endIdx; 
             }
 
-
             const newPoint = {
                 lat: latlng.lat,
                 lng: latlng.lng,
@@ -501,12 +509,17 @@
                     icon: createDivIcon(pointText, null, type), 
                     draggable: true 
                 }).addTo(map),
-                originalIndex: routePoints.length // This gives a unique creation order index
+                radiusCircle: L.circle(latlng, {
+                    radius: currentStopRadius,
+                    color: 'blue', weight: 1, opacity: 0.5, 
+                    fillColor: 'blue', fillOpacity: 0.2
+                }).addTo(map),
+                originalIndex: routePoints.length 
             };
 
             newPoint.marker.on('dragend', function(event) {
                 if (isTracking) {
-                    event.target.setLatLng(L.latLng(newPoint.lat, newPoint.lng)); // Revert drag
+                    event.target.setLatLng(L.latLng(newPoint.lat, newPoint.lng)); 
                     alert("Detén el seguimiento para modificar la ruta.");
                     return;
                 }
@@ -516,6 +529,9 @@
                 if (point) {
                     point.lat = position.lat;
                     point.lng = position.lng;
+                    if (point.radiusCircle) {
+                        point.radiusCircle.setLatLng(position);
+                    }
                     redrawRouteLine();
                     if (document.getElementById('autoCalcTimes').checked) {
                         calculateAndApplyIntermediateTimes();
@@ -536,8 +552,7 @@
                  routePoints.push(newPoint);
             }
 
-            nameInput.value = ""; // Clear for next point
-            // timeInput.value = ""; // Optional: Keep for sequential times or clear
+            nameInput.value = ""; 
 
             if (document.getElementById('autoCalcTimes').checked) {
                 calculateAndApplyIntermediateTimes();
@@ -551,13 +566,11 @@
             const endPoint = routePoints.find(p => p.type === 'end');
 
             if (!startPoint || !endPoint || !startPoint.scheduledTime || !endPoint.scheduledTime) {
-                // Clear times for intermediates if start/end times are missing
                 routePoints.filter(p => p.type === 'intermediate').forEach(p => p.scheduledTime = null);
                 updateStopsList();
                 return;
             }
-
-            // Sort intermediates by their creation order for calculation path
+            
             const intermediatePoints = routePoints.filter(p => p.type === 'intermediate')
                                             .sort((a,b) => a.originalIndex - b.originalIndex);
             
@@ -576,8 +589,7 @@
                                     .distanceTo(L.latLng(pathForCalc[i+1].lat, pathForCalc[i+1].lng));
             }
 
-            if (totalRouteDistance === 0) { // Avoid division by zero
-                // Distribute time equally if no distance
+            if (totalRouteDistance === 0) { 
                 const numSegments = intermediatePoints.length + 1;
                 const timePerSegment = totalDurationMillis / numSegments;
                  intermediatePoints.forEach((point, index) => {
@@ -587,13 +599,11 @@
                 return;
             }
 
-            // Calculate times for intermediate points based on their position in the sorted list (pathForCalc)
             for (let i = 0; i < intermediatePoints.length; i++) {
                 const point = intermediatePoints[i];
                 
                 let distFromStartToCurrentInter = 0;
-                // Calculate distance from startPoint, along the pathForCalc, up to the current intermediatePoint
-                for(let k=0; k < pathForCalc.indexOf(point); k++){ // pathForCalc.indexOf(point) will be i+1
+                for(let k=0; k < pathForCalc.indexOf(point); k++){ 
                     distFromStartToCurrentInter += L.latLng(pathForCalc[k].lat, pathForCalc[k].lng)
                                                 .distanceTo(L.latLng(pathForCalc[k+1].lat, pathForCalc[k+1].lng));
                 }
@@ -608,7 +618,12 @@
         
         function clearCurrentRoute() {
             cancelEdit(); 
-            routePoints.forEach(p => map.removeLayer(p.marker));
+            routePoints.forEach(p => {
+                map.removeLayer(p.marker);
+                if (p.radiusCircle) {
+                    map.removeLayer(p.radiusCircle);
+                }
+            });
             routePoints = [];
             if (routeLine) map.removeLayer(routeLine);
             routeLine = null;
@@ -650,7 +665,7 @@
         }
 
 
-        function formatTime(dateObj) { // Expects a Date object
+        function formatTime(dateObj) { 
             if (!dateObj || isNaN(dateObj.getTime())) return "N/A";
             return dateObj.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) + 
                    ` (${dateObj.toLocaleDateString('es-ES')})`;
@@ -667,7 +682,7 @@
 
             let html = "<ul>";
             let intermediateVisualCounter = 1;
-            displayPoints.forEach((p) => { // p is from displayPoints
+            displayPoints.forEach((p) => { 
                 let typeText = "";
                 switch(p.type) {
                     case 'start': typeText = "Inicio"; break;
@@ -680,9 +695,8 @@
                 
                 let itemClass = "stop-item";
                 if (isTracking && routePoints.length > 1 && currentSegmentStartIndex < routePoints.length - 1) {
-                    // routePoints is in tracking order during isTracking
                     const nextTrackingStop = routePoints[currentSegmentStartIndex + 1];
-                    if (p === nextTrackingStop) { // Compare object references
+                    if (p === nextTrackingStop) { 
                         itemClass += " next-stop-highlight";
                     }
                 }
@@ -708,7 +722,7 @@
                 return;
             }
 
-            const savablePoints = routePoints.map(p => ({
+            const savablePoints = routePoints.map(p => ({ // radiusCircle is not saved
                 lat: p.lat, lng: p.lng, name: p.name, type: p.type, 
                 scheduledTime: p.scheduledTime ? new Date(p.scheduledTime).toISOString() : null,
                 originalIndex: p.originalIndex 
@@ -744,6 +758,11 @@
                     marker: L.marker([p_data.lat, p_data.lng], { 
                         icon: createDivIcon('', null, p_data.type), 
                         draggable: true 
+                    }).addTo(map),
+                    radiusCircle: L.circle([p_data.lat, p_data.lng], { // Add circle on load
+                        radius: currentStopRadius,
+                        color: 'blue', weight: 1, opacity: 0.5, 
+                        fillColor: 'blue', fillOpacity: 0.2
                     }).addTo(map)
                 };
                 
@@ -759,6 +778,9 @@
                     if (point) {
                         point.lat = position.lat;
                         point.lng = position.lng;
+                        if (point.radiusCircle) { // Update circle position
+                            point.radiusCircle.setLatLng(position);
+                        }
                         redrawRouteLine();
                          if (document.getElementById('autoCalcTimes').checked) {
                             calculateAndApplyIntermediateTimes();
@@ -996,23 +1018,20 @@
             const speedKmh = speed ? (speed * 3.6).toFixed(1) : 0;
             document.getElementById('speedDisplay').textContent = `Velocidad: ${speedKmh} KM/H`;
 
-            if (currentSegmentStartIndex < routePoints.length - 1) { // If there's at least one more stop to go to
+            if (currentSegmentStartIndex < routePoints.length - 1) { 
                 const manualNav = document.getElementById('manualStopNav').checked;
-                let advancedOrJumpedThisTick = false; // Flag to track if advanceToNextStop was called
+                let advancedOrJumpedThisTick = false; 
 
                 if (!manualNav) {
                     const currentTargetStopIndex = currentSegmentStartIndex + 1;
-                    const currentTargetStop = routePoints[currentTargetStopIndex]; // This is the stop we are currently aiming for
+                    const currentTargetStop = routePoints[currentTargetStopIndex]; 
                     
-                    // Initialize best candidate with the current target
                     let bestCandidateStop = currentTargetStop;
                     let bestCandidateStopIndex = currentTargetStopIndex;
                     let minDistanceToCandidate = userLatLng.distanceTo(L.latLng(currentTargetStop.lat, currentTargetStop.lng));
 
-                    // Look at the current target and a few subsequent stops to find the one the user is truly closest to / heading towards.
-                    const lookAheadWindowSize = 3; // Check current target + next 2 stops (total 3 stops in window).
+                    const lookAheadWindowSize = 3; 
                     const firstStopInWindowIndex = currentTargetStopIndex;
-                    // Ensure we don't look beyond the end of the route
                     const lastStopInWindowExclusiveIndex = Math.min(routePoints.length, firstStopInWindowIndex + lookAheadWindowSize);
 
                     for (let i = firstStopInWindowIndex; i < lastStopInWindowExclusiveIndex; i++) {
@@ -1026,35 +1045,27 @@
                         }
                     }
                     
-                    const detectionRadius = 75; // Radius in meters for considering "arrival" at a stop.
+                    const arrivalRadius = currentStopRadius; 
+                    const jumpConsiderationRadius = arrivalRadius * 2.5; // Can be adjusted
                     
-                    // Decision logic:
-                    // 1. If the best candidate stop found is NOT the original currentTargetStop (i.e., user is closer to a future stop)
-                    //    AND the user is reasonably close to this new best candidate (to prevent erratic jumps when far off route).
-                    if (bestCandidateStopIndex !== currentTargetStopIndex && minDistanceToCandidate < (detectionRadius * 2.5) ) {
+                    if (bestCandidateStopIndex !== currentTargetStopIndex && minDistanceToCandidate < jumpConsiderationRadius ) {
                         console.log(`Desvío/Salto: Usuario más cerca de ${bestCandidateStop.name} (dist: ${minDistanceToCandidate.toFixed(0)}m) que de ${currentTargetStop.name}. Actualizando objetivo.`);
-                        currentSegmentStartIndex = bestCandidateStopIndex - 1; // Prepare so advanceToNextStop targets bestCandidateStop
+                        currentSegmentStartIndex = bestCandidateStopIndex - 1; 
                         advanceToNextStop();
                         advancedOrJumpedThisTick = true;
                     }
-                    // 2. Else, if the best candidate IS the original currentTargetStop (or no better future stop was found/close enough)
-                    //    AND the user is within the detectionRadius of this currentTargetStop.
-                    else if (bestCandidateStopIndex === currentTargetStopIndex && minDistanceToCandidate < detectionRadius) {
+                    else if (bestCandidateStopIndex === currentTargetStopIndex && minDistanceToCandidate < arrivalRadius) {
                         console.log(`Llegada normal a ${currentTargetStop.name} (dist: ${minDistanceToCandidate.toFixed(0)}m). Avanzando.`);
                         advanceToNextStop();
                         advancedOrJumpedThisTick = true;
                     }
-                    // Else (no advance or jump condition met), do nothing, continue towards currentTargetStop.
                 }
 
-                // If not advanced/jumped automatically this tick, or if in manual mode, calculate deviation for current target.
-                // If advanced/jumped, advanceToNextStop() already called calculateTimeDeviation for the *new* target.
                 if (!advancedOrJumpedThisTick) {
                     calculateTimeDeviation(position);
                 }
-                // Note: If manualNav is true, advancedOrJumpedThisTick remains false, so calculateTimeDeviation gets called. This is correct.
 
-            } else { // Route completed (currentSegmentStartIndex is at the last point, or beyond)
+            } else { 
                 document.getElementById('nextStopDisplay').textContent = "Ruta Completada";
                 document.getElementById('timeDeviation').textContent = "00:00"; 
                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
@@ -1067,12 +1078,12 @@
 
         function advanceToNextStop() {
             currentSegmentStartIndex++;
-            if (currentSegmentStartIndex >= routePoints.length - 1) { // Reached or passed the last point
+            if (currentSegmentStartIndex >= routePoints.length - 1) { 
                  if (isTracking) stopTracking(true); 
             } else {
                 highlightNextStopInList();
                 updateManualNavButtons();
-                if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition); // Calculate for the new segment
+                if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition); 
             }
         }
         
@@ -1085,9 +1096,9 @@
             }
         }
         function goToNextStop() { 
-             if (currentSegmentStartIndex < routePoints.length - 2) { // If there are at least two more stops ahead (current + next)
+             if (currentSegmentStartIndex < routePoints.length - 2) { 
                 advanceToNextStop(); 
-            } else if (currentSegmentStartIndex === routePoints.length - 2) { // If current is second to last, advance to last
+            } else if (currentSegmentStartIndex === routePoints.length - 2) { 
                 advanceToNextStop(); 
             }
         }
@@ -1141,14 +1152,12 @@
             const latLngB = L.latLng(pointB.lat, pointB.lng);
             const currentUserLatLng = L.latLng(currentUserGeoPosition.coords.latitude, currentUserGeoPosition.coords.longitude);
 
-            const distanceTotalSegment = latLngA.distanceTo(latLngB); // d_AB
+            const distanceTotalSegment = latLngA.distanceTo(latLngB); 
             let progressPercentage;
 
-            if (distanceTotalSegment < 1.0) { // Segment has negligible length
+            if (distanceTotalSegment < 1.0) { 
                 const now = new Date();
                 let expectedTimeAtCurrentPosMillis;
-                // If closer to B than to A (or equidistant and B is the target), use B's time.
-                // Otherwise (closer to A), use A's time.
                 if (currentUserLatLng.distanceTo(latLngB) < currentUserLatLng.distanceTo(latLngA)) {
                     expectedTimeAtCurrentPosMillis = scheduledTimeB.getTime();
                 } else {
@@ -1159,39 +1168,32 @@
                 return;
             }
 
-            const distToA = currentUserLatLng.distanceTo(latLngA); // d_AP
-            const distToB = currentUserLatLng.distanceTo(latLngB); // d_BP
+            const distToA = currentUserLatLng.distanceTo(latLngA); 
+            const distToB = currentUserLatLng.distanceTo(latLngB); 
 
-            // Case 1: User is very close to point A
             if (distToA < 10.0) {
                 progressPercentage = 0.0;
             }
-            // Case 2: User is very close to point B
             else if (distToB < 10.0) {
                 progressPercentage = 1.0;
             }
-            // Case 3: User is on the line AB extended past B (dist(A,P) approx dist(A,B) + dist(B,P))
             else if (Math.abs(distToA - (distanceTotalSegment + distToB)) < 20.0 && distToA > distanceTotalSegment) {
                 progressPercentage = 1.0;
             }
-            // Case 4: User is on the line AB extended before A (dist(B,P) approx dist(B,A) + dist(A,P))
             else if (Math.abs(distToB - (distanceTotalSegment + distToA)) < 20.0 && distToB > distanceTotalSegment) {
                 progressPercentage = 0.0;
             }
-            // Case 5: General case using projection
-            // Distance from A to P' (projection of P on line AB) = (d_AB^2 + d_AP^2 - d_BP^2) / (2 * d_AB)
             else {
                 const numerator = Math.pow(distanceTotalSegment, 2) + Math.pow(distToA, 2) - Math.pow(distToB, 2);
                 const denominator = 2 * distanceTotalSegment;
-                if (denominator === 0) { // Should be caught by distanceTotalSegment < 1, but as a safeguard
-                    progressPercentage = (distToA < distToB) ? 0.0 : 1.0; // Arbitrary choice if segment is a point
+                if (denominator === 0) { 
+                    progressPercentage = (distToA < distToB) ? 0.0 : 1.0; 
                 } else {
                     const dist_A_to_P_prime = numerator / denominator;
                     progressPercentage = dist_A_to_P_prime / distanceTotalSegment;
                 }
             }
 
-            // Clamp progress to [0, 1]
             progressPercentage = Math.max(0, Math.min(1, progressPercentage));
 
             const expectedTimeElapsedMillis = segmentTotalScheduledMillis * progressPercentage;
@@ -1302,12 +1304,29 @@
                         alert(`La ruta "${nextRouteName}" no se encontró en las rutas guardadas. No se pudo cargar.`);
                     }
                 } else {
-                    alert("Siguiente ruta de la cola no iniciada. Puedes iniciarla manually.");
+                    alert("Siguiente ruta de la cola no iniciada. Puedes iniciarla manualmente.");
                 }
             } else {
                 console.log("Cola de rutas vacía.");
             }
         }
+
+        // --- Radius Settings ---
+        function updateGlobalStopRadiusSettings() {
+            const newRadius = parseInt(document.getElementById('stopRadiusInput').value, 10);
+            if (!isNaN(newRadius) && newRadius >= 10 && newRadius <= 500) {
+                currentStopRadius = newRadius;
+                routePoints.forEach(point => {
+                    if (point.radiusCircle) {
+                        point.radiusCircle.setRadius(currentStopRadius);
+                    }
+                });
+            } else {
+                alert("Radio inválido. Debe estar entre 10 y 500 metros.");
+                document.getElementById('stopRadiusInput').value = currentStopRadius; // Reset to old valid value
+            }
+        }
+
 
         // --- Initial Setup ---
         document.addEventListener('DOMContentLoaded', () => {
