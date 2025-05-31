@@ -991,75 +991,70 @@
             } else {
                 userMarker.setLatLng(userLatLng);
             }
-             map.panTo(userLatLng, {animate: true, duration: 0.5}); 
+            map.panTo(userLatLng, {animate: true, duration: 0.5}); 
 
             const speedKmh = speed ? (speed * 3.6).toFixed(1) : 0;
             document.getElementById('speedDisplay').textContent = `Velocidad: ${speedKmh} KM/H`;
 
-            if (currentSegmentStartIndex < routePoints.length - 1) { 
+            if (currentSegmentStartIndex < routePoints.length - 1) { // If there's at least one more stop to go to
                 const manualNav = document.getElementById('manualStopNav').checked;
+                let advancedOrJumpedThisTick = false; // Flag to track if advanceToNextStop was called
 
                 if (!manualNav) {
-                    const currentTargetStop = routePoints[currentSegmentStartIndex + 1];
-                    const distanceToCurrentTarget = userLatLng.distanceTo(L.latLng(currentTargetStop.lat, currentTargetStop.lng));
-                    const detectionRadius = 75; 
-                    const lookAheadLimit = Math.min(routePoints.length -1, currentSegmentStartIndex + 4);
+                    const currentTargetStopIndex = currentSegmentStartIndex + 1;
+                    const currentTargetStop = routePoints[currentTargetStopIndex]; // This is the stop we are currently aiming for
+                    
+                    // Initialize best candidate with the current target
+                    let bestCandidateStop = currentTargetStop;
+                    let bestCandidateStopIndex = currentTargetStopIndex;
+                    let minDistanceToCandidate = userLatLng.distanceTo(L.latLng(currentTargetStop.lat, currentTargetStop.lng));
 
-                    let advanced = false;
+                    // Look at the current target and a few subsequent stops to find the one the user is truly closest to / heading towards.
+                    const lookAheadWindowSize = 3; // Check current target + next 2 stops (total 3 stops in window).
+                    const firstStopInWindowIndex = currentTargetStopIndex;
+                    // Ensure we don't look beyond the end of the route
+                    const lastStopInWindowExclusiveIndex = Math.min(routePoints.length, firstStopInWindowIndex + lookAheadWindowSize);
 
-                    if (distanceToCurrentTarget < detectionRadius) {
-                        console.log(`Avance por proximidad directa a ${currentTargetStop.name}`);
-                        advanceToNextStop();
-                        advanced = true;
-                    } else {
-                        let closestFutureStop = null;
-                        let minDistanceToFutureStop = Infinity;
-                        let bestFutureStopIndex = -1;
+                    for (let i = firstStopInWindowIndex; i < lastStopInWindowExclusiveIndex; i++) {
+                        const potentialStop = routePoints[i];
+                        const distanceToPotentialStop = userLatLng.distanceTo(L.latLng(potentialStop.lat, potentialStop.lng));
 
-                        for (let i = currentSegmentStartIndex + 1; i < lookAheadLimit; i++) {
-                             if (i >= routePoints.length) break; 
-
-                            const futureStop = routePoints[i]; 
-                            const distToThisFutureStop = userLatLng.distanceTo(L.latLng(futureStop.lat, futureStop.lng));
-
-                            if (distToThisFutureStop < minDistanceToFutureStop) {
-                                minDistanceToFutureStop = distToThisFutureStop;
-                                closestFutureStop = futureStop;
-                                bestFutureStopIndex = i; 
-                            }
-                        }
-                        
-                        if (closestFutureStop && bestFutureStopIndex > (currentSegmentStartIndex + 1)) { 
-                            if (minDistanceToFutureStop < distanceToCurrentTarget && minDistanceToFutureStop < detectionRadius * 2.5) {
-                                console.log(`Saltando a ${closestFutureStop.name} (segmento ${bestFutureStopIndex -1}). Estaba apuntando a ${currentTargetStop.name}.`);
-                                currentSegmentStartIndex = bestFutureStopIndex - 1; 
-                                advanceToNextStop(); 
-                                advanced = true;
-                            }
-                        }
-                        
-                        if (!advanced && routePoints[currentSegmentStartIndex] && routePoints[currentSegmentStartIndex+1]) {
-                            const pointA = routePoints[currentSegmentStartIndex];
-                            const pointB = routePoints[currentSegmentStartIndex + 1];
-                            const latLngA = L.latLng(pointA.lat, pointA.lng);
-                            const latLngB = L.latLng(pointB.lat, pointB.lng);
-                            const totalSegmentDist = latLngA.distanceTo(latLngB);
-                            if (totalSegmentDist > 0) { 
-                                const distUserToA = userLatLng.distanceTo(latLngA);
-                                const distUserToB = userLatLng.distanceTo(latLngB);
-                                const progressAlongSegmentLine = distUserToA / totalSegmentDist;
-
-                                if (progressAlongSegmentLine > 0.90 && distUserToB < distUserToA && distUserToB < totalSegmentDist * 0.5) {
-                                    console.log(`Avance por pasar el 90% del segmento hacia ${pointB.name}`);
-                                    advanceToNextStop();
-                                    advanced = true;
-                                }
-                            }
+                        if (distanceToPotentialStop < minDistanceToCandidate) {
+                            minDistanceToCandidate = distanceToPotentialStop;
+                            bestCandidateStop = potentialStop;
+                            bestCandidateStopIndex = i;
                         }
                     }
+                    
+                    const detectionRadius = 75; // Radius in meters for considering "arrival" at a stop.
+                    
+                    // Decision logic:
+                    // 1. If the best candidate stop found is NOT the original currentTargetStop (i.e., user is closer to a future stop)
+                    //    AND the user is reasonably close to this new best candidate (to prevent erratic jumps when far off route).
+                    if (bestCandidateStopIndex !== currentTargetStopIndex && minDistanceToCandidate < (detectionRadius * 2.5) ) {
+                        console.log(`Desvío/Salto: Usuario más cerca de ${bestCandidateStop.name} (dist: ${minDistanceToCandidate.toFixed(0)}m) que de ${currentTargetStop.name}. Actualizando objetivo.`);
+                        currentSegmentStartIndex = bestCandidateStopIndex - 1; // Prepare so advanceToNextStop targets bestCandidateStop
+                        advanceToNextStop();
+                        advancedOrJumpedThisTick = true;
+                    }
+                    // 2. Else, if the best candidate IS the original currentTargetStop (or no better future stop was found/close enough)
+                    //    AND the user is within the detectionRadius of this currentTargetStop.
+                    else if (bestCandidateStopIndex === currentTargetStopIndex && minDistanceToCandidate < detectionRadius) {
+                        console.log(`Llegada normal a ${currentTargetStop.name} (dist: ${minDistanceToCandidate.toFixed(0)}m). Avanzando.`);
+                        advanceToNextStop();
+                        advancedOrJumpedThisTick = true;
+                    }
+                    // Else (no advance or jump condition met), do nothing, continue towards currentTargetStop.
                 }
-                calculateTimeDeviation(position);
-            } else { 
+
+                // If not advanced/jumped automatically this tick, or if in manual mode, calculate deviation for current target.
+                // If advanced/jumped, advanceToNextStop() already called calculateTimeDeviation for the *new* target.
+                if (!advancedOrJumpedThisTick) {
+                    calculateTimeDeviation(position);
+                }
+                // Note: If manualNav is true, advancedOrJumpedThisTick remains false, so calculateTimeDeviation gets called. This is correct.
+
+            } else { // Route completed (currentSegmentStartIndex is at the last point, or beyond)
                 document.getElementById('nextStopDisplay').textContent = "Ruta Completada";
                 document.getElementById('timeDeviation').textContent = "00:00"; 
                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
@@ -1072,12 +1067,12 @@
 
         function advanceToNextStop() {
             currentSegmentStartIndex++;
-            if (currentSegmentStartIndex >= routePoints.length - 1) { 
+            if (currentSegmentStartIndex >= routePoints.length - 1) { // Reached or passed the last point
                  if (isTracking) stopTracking(true); 
             } else {
                 highlightNextStopInList();
                 updateManualNavButtons();
-                if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition);
+                if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition); // Calculate for the new segment
             }
         }
         
@@ -1090,9 +1085,9 @@
             }
         }
         function goToNextStop() { 
-             if (currentSegmentStartIndex < routePoints.length - 2) { 
+             if (currentSegmentStartIndex < routePoints.length - 2) { // If there are at least two more stops ahead (current + next)
                 advanceToNextStop(); 
-            } else if (currentSegmentStartIndex === routePoints.length - 2) { 
+            } else if (currentSegmentStartIndex === routePoints.length - 2) { // If current is second to last, advance to last
                 advanceToNextStop(); 
             }
         }
