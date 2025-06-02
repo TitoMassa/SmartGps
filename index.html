@@ -1357,28 +1357,88 @@
             
             isTracking = true;
             trackingState.currentTurn = 1;
-            trackingState.currentFlag = document.getElementById('startTrackingFlag').value; 
-            currentSegmentStartIndex = 0; 
-            
-            if (!setupCurrentLegForTracking()) { stopTracking(false, "Error configurando pierna inicial."); return; }
+            trackingState.currentFlag = document.getElementById('startTrackingFlag').value;
+            // currentSegmentStartIndex will be set after getting initial position or default to 0
+
+            if (!setupCurrentLegForTracking()) { // This populates trackingState.activeLegPoints
+                stopTracking(false, "Error configurando pierna inicial.");
+                return;
+            }
             
             document.getElementById('startTrackingBtn').style.display = 'none';
             document.getElementById('stopTrackingBtn').style.display = 'inline-block';
             document.getElementById('routeCreationSection').style.display = 'none'; 
-            updateTrackingStatusDisplay(); redrawRouteLine(); updateWaypointMarkersVisibility(false); 
+            updateTrackingStatusDisplay(); 
+            redrawRouteLine(); 
+            updateWaypointMarkersVisibility(false); 
 
             if (navigator.geolocation) {
-                trackingIntervalId = navigator.geolocation.watchPosition(
-                    handlePositionUpdate, handleGeolocationError,
-                    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 } 
+                navigator.geolocation.getCurrentPosition(
+                    initialPosition => {
+                        lastKnownPosition = initialPosition; // Store it
+                        const { latitude, longitude } = initialPosition.coords;
+
+                        if (userMarker) {
+                            userMarker.setLatLng([latitude, longitude]);
+                        } else {
+                            userMarker = L.marker([latitude, longitude], { icon: createUserLocationIcon() }).addTo(map);
+                        }
+                        map.setView([latitude, longitude], 16); // Center on user
+
+                        if (trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0) {
+                            let closestPointIndex = 0;
+                            let minDistance = Infinity;
+                            trackingState.activeLegPoints.forEach((point, index) => {
+                                const distance = L.latLng(latitude, longitude).distanceTo(L.latLng(point.lat, point.lng));
+                                if (distance < minDistance) {
+                                    minDistance = distance;
+                                    closestPointIndex = index;
+                                }
+                            });
+                            currentSegmentStartIndex = closestPointIndex;
+                        } else {
+                             currentSegmentStartIndex = 0; // Should not happen if setupCurrentLegForTracking was successful
+                        }
+                        
+                        trackingIntervalId = navigator.geolocation.watchPosition(
+                            handlePositionUpdate, handleGeolocationError,
+                            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                        );
+                        finalizeTrackingStart();
+                    },
+                    initialPositionError => {
+                        console.warn("No se pudo obtener la posición inicial para el inicio del seguimiento:", initialPositionError.message, "Se iniciará desde el comienzo de la bandera.");
+                        currentSegmentStartIndex = 0; // Default if initial position fails
+                        if (trackingState.activeLegPoints.length > 0 && trackingState.activeLegPoints[0]) {
+                            map.setView([trackingState.activeLegPoints[0].lat, trackingState.activeLegPoints[0].lng], 16);
+                        }
+                        trackingIntervalId = navigator.geolocation.watchPosition(
+                            handlePositionUpdate, handleGeolocationError,
+                            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                        );
+                        finalizeTrackingStart();
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 } 
                 );
-                if (trackingState.activeLegPoints.length > 0 && trackingState.activeLegPoints[0]) {
-                    map.setView([trackingState.activeLegPoints[0].lat, trackingState.activeLegPoints[0].lng], 16); 
-                }
-            } else { alert("Geolocalización no disponible."); stopTracking(false); }
-            updateManualNavButtons();
-            highlightNextStopInList();
+            } else {
+                alert("Geolocalización no disponible.");
+                stopTracking(false, "Geolocalización no disponible");
+            }
         }
+
+        function finalizeTrackingStart() {
+            if (!isTracking) return; 
+
+            if (lastKnownPosition) {
+                calculateTimeDeviation(lastKnownPosition);
+            } else {
+                 document.getElementById('timeDeviation').textContent = "Calculando...";
+                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
+            }
+            highlightNextStopInList();
+            updateManualNavButtons();
+        }
+
 
         function stopTracking(completedNaturally = false, reason = "") {
             if (trackingIntervalId) navigator.geolocation.clearWatch(trackingIntervalId);
@@ -1447,12 +1507,13 @@
                             break;
                         }
                     }
-                    if (!nextRelevantTargetPoint) {
+                    if (!nextRelevantTargetPoint) { // No non-waypoint found ahead, target the last point of the leg
                         if (currentSegmentStartIndex < trackingState.activeLegPoints.length - 1) { 
                            nextRelevantTargetPoint = trackingState.activeLegPoints[trackingState.activeLegPoints.length - 1];
                            nextRelevantTargetIndex = trackingState.activeLegPoints.length - 1;
                         }
                     }
+
                     if (nextRelevantTargetPoint) {
                         const distanceToTarget = L.latLng(latitude, longitude).distanceTo(L.latLng(nextRelevantTargetPoint.lat, nextRelevantTargetPoint.lng));
                         if (distanceToTarget < currentStopRadius) {
@@ -1541,6 +1602,11 @@
                         break;
                     }
                 }
+                 if (!displayableNextTarget && currentSegmentStartIndex < trackingState.activeLegPoints.length -1 ) { // If only waypoints left, or at last waypoint.
+                    displayableNextTarget = trackingState.activeLegPoints[trackingState.activeLegPoints.length -1]; // Target final point of leg.
+                }
+
+
                 if (displayableNextTarget) {
                     nextStopName = displayableNextTarget.name;
                     const listPoints = getSortedRoutePointsForDisplay(); 
@@ -1548,8 +1614,10 @@
                     if (displayIndexInList !== -1 && document.querySelectorAll('#stopsList .stop-item')[displayIndexInList]) {
                         document.querySelectorAll('#stopsList .stop-item')[displayIndexInList].classList.add('next-stop-highlight');
                     }
-                } else {
-                    nextStopName = "Fin de Bandera";
+                } else if (currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) { // Already at or past the last point of the leg
+                     nextStopName = "Fin de Bandera";
+                } else { // Should not happen if logic above is correct, but as a fallback
+                     nextStopName = "Fin de Bandera";
                 }
             } else if (!isTracking) { 
                 const displayPoints = getSortedRoutePointsForDisplay();
@@ -1569,6 +1637,12 @@
                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
                 return;
             }
+             if (!currentUserGeoPosition) { // Added check for null currentUserGeoPosition
+                document.getElementById('timeDeviation').textContent = "---";
+                document.getElementById('timeDeviation').style.color = "#FFFFFF";
+                return;
+            }
+
 
             const currentTime = new Date().getTime();
             const legPoints = trackingState.activeLegPoints;
