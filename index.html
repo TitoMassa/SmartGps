@@ -49,12 +49,14 @@
             border-bottom: none;
         }
 
-        h2, h3 {
+        h2, h3, h4 {
             color: #FFFFFF;
             margin-top: 0;
             margin-bottom: 8px;
-            font-size: 1.1em;
         }
+        h3 { font-size: 1.1em; }
+        h4 { font-size: 1em; margin-top: 10px;}
+
 
         label {
             display: block;
@@ -174,6 +176,14 @@
             border: 2px solid white;
             box-shadow: 0 0 0 2px #007bff;
         }
+        #lineEndpointTurnSchedulesContainer .turn-schedule-group {
+            border-bottom: 1px dashed #444;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+        #lineEndpointTurnSchedulesContainer .turn-schedule-group:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
@@ -208,21 +218,21 @@
             <label for="pointName">Nombre Punto:</label>
             <input type="text" id="pointName" placeholder="Ej: Terminal Norte">
             
-            <div id="lineEndpointTimes" style="display:none;">
-                <label for="pointScheduledDepartureTime">Horario Salida Programado (de esta Punta de Línea):</label>
-                <input type="datetime-local" id="pointScheduledDepartureTime">
-                <label for="pointScheduledArrivalTime">Horario Llegada Programado (a esta Punta de Línea):</label>
-                <input type="datetime-local" id="pointScheduledArrivalTime">
-                <small style="font-size: 0.7em; display: block; margin-bottom: 5px;">
-                    <b>1ra Punta de Línea (P1):</b> Salida inicia IDA, Llegada termina VUELTA.<br>
-                    <b>2da Punta de Línea (P2):</b> Llegada termina IDA, Salida inicia VUELTA.
-                </small>
+            <div id="lineEndpointTurnSchedulesContainer" style="display:none; max-height: 200px; overflow-y: auto; border: 1px solid #555; padding: 10px; margin-bottom:10px; background-color: #1a1a1a;">
+                <!-- Horarios por vuelta para Puntas de Línea se generan aquí por JS -->
             </div>
+             <small id="lineEndpointScheduleHelperText" style="font-size: 0.7em; display: none; margin-bottom: 10px; color: #ccc;">
+                <b>P1 (Primera Punta de Línea):</b> Para cada vuelta, la "Salida" es el inicio de la bandera IDA y la "Llegada" es el fin de la bandera VUELTA.<br>
+                <b>P2 (Segunda Punta de Línea):</b> Para cada vuelta, la "Llegada" es el fin de la bandera IDA y la "Salida" es el inicio de la bandera VUELTA.
+            </small>
+
             <div id="intermediateStopTime" style="display:none;">
-                <label for="pointScheduledTimeIntermediate">Horario Programado (Parada Intermedia en IDA):</label>
-                <input type="datetime-local" id="pointScheduledTimeIntermediate">
-                <small style="font-size: 0.7em; display: block; margin-bottom: 5px;">
-                    El horario para VUELTA se calculará automáticamente si la opción está activa y la ruta es un simple ida y vuelta. Para rutas con caminos de vuelta distintos, configurar P2 y los puntos siguientes.
+                <label for="pointScheduledTimeIntermediateIDA">Horario Programado (Parada Intermedia en IDA):</label>
+                <input type="datetime-local" id="pointScheduledTimeIntermediateIDA">
+                <label for="pointScheduledTimeIntermediateVUELTA">Horario Programado (Parada Intermedia en VUELTA):</label>
+                <input type="datetime-local" id="pointScheduledTimeIntermediateVUELTA">
+                <small style="font-size: 0.7em; display: block; margin-bottom: 5px; color: #ccc;">
+                    Estos horarios para paradas intermedias se pueden calcular automáticamente usando la opción "Calcular horarios intermedios" (basado en la Vuelta 1 de las Puntas de Línea).
                 </small>
             </div>
 
@@ -233,7 +243,7 @@
             </div>
             <hr style="margin: 15px 0;">
             <input type="checkbox" id="autoCalcTimes" checked onchange="calculateAndApplyAllIntermediateTimes()">
-            <label for="autoCalcTimes" style="display:inline;">Calcular horarios intermedios automáticamente (para IDA y VUELTA, si aplica)</label>
+            <label for="autoCalcTimes" style="display:inline;">Calcular horarios intermedios automáticamente (basado en horarios de Vuelta 1 de Puntas de Línea)</label>
             <br><br>
             <button onclick="clearCurrentRoute()">Limpiar Ruta Actual</button>
         </div>
@@ -383,7 +393,7 @@
                 });
             }
             document.getElementById('stopRadiusInput').value = currentStopRadius;
-            updateRouteSettings(); // This will also initialize currentEditingFlagView and button text
+            updateRouteSettings(); 
         }
 
         function setActiveMode(modeName) {
@@ -472,6 +482,7 @@
         function updateRouteSettings() {
             const oldIdaName = routeSettings.flagNameIda;
             const oldVueltaName = routeSettings.flagNameVuelta;
+            const oldTotalTurns = routeSettings.totalTurns;
         
             routeSettings.totalTurns = parseInt(document.getElementById('totalTurnsInput').value) || 1;
             routeSettings.flagNameIda = document.getElementById('flagNameIdaInput').value || "IDA";
@@ -481,15 +492,36 @@
                 currentEditingFlagView = routeSettings.flagNameIda;
             } else if (currentEditingFlagView === oldVueltaName) {
                 currentEditingFlagView = routeSettings.flagNameVuelta;
-            } else { // If names changed significantly or currentEditingFlagView was something else
+            } else { 
                 currentEditingFlagView = routeSettings.flagNameIda;
             }
         
             const btn = document.getElementById('toggleEditingFlagViewBtn');
-            if (btn) { // Button might not exist if called very early
+            if (btn) { 
                 btn.textContent = `Vista Trazado: ${currentEditingFlagView}`;
             }
             
+            if (oldTotalTurns !== routeSettings.totalTurns) {
+                routePoints.forEach(p => {
+                    if (p.pointCategory === 'lineEndpoint') {
+                        if (!p.turnSchedules) p.turnSchedules = [];
+                        const newSchedules = new Array(routeSettings.totalTurns);
+                        for (let i = 0; i < routeSettings.totalTurns; i++) {
+                            const existing = p.turnSchedules[i] || {};
+                            newSchedules[i] = {
+                                scheduledDeparture: existing.scheduledDeparture || null,
+                                scheduledArrival: existing.scheduledArrival || null
+                            };
+                        }
+                        p.turnSchedules = newSchedules;
+                    }
+                });
+                // If a line endpoint is currently being edited, refresh its schedule UI
+                if (currentlyEditingPoint && currentlyEditingPoint.pointCategory === 'lineEndpoint') {
+                    activateEditModeForPoint(currentlyEditingPoint); 
+                }
+            }
+
             if (!isTracking) {
                 trackingState.currentFlag = routeSettings.flagNameIda;
             }
@@ -515,30 +547,87 @@
                 return;
             }
             
-            if (activePointCreationMode !== null) {
+            if (activePointCreationMode !== null && activePointCreationMode !== 'schedule') {
                 setActiveMode(null); 
-            } else {
-                cancelEdit(); 
+            } else if (activePointCreationMode !== 'schedule') { // if it's null, and not schedule mode
+                 cancelEdit();
             }
+
 
             currentlyEditingPoint = point;
             document.getElementById('pointName').value = point.name;
             document.getElementById('pointName').readOnly = timeEditingPriority;
             
-            document.getElementById('lineEndpointTimes').style.display = 'none';
+            document.getElementById('lineEndpointTurnSchedulesContainer').style.display = 'none';
+            document.getElementById('lineEndpointScheduleHelperText').style.display = 'none';
             document.getElementById('intermediateStopTime').style.display = 'none';
 
             if (point.pointCategory === 'lineEndpoint') {
-                document.getElementById('lineEndpointTimes').style.display = 'block';
-                const depTimeKey = point.isFirstEndpoint ? 'departureOutbound' : 'departureReturn';
-                const arrTimeKey = point.isFirstEndpoint ? 'arrivalReturn' : 'arrivalOutbound';
-                document.getElementById('pointScheduledDepartureTime').value = formatDateTimeForInput(point.times[depTimeKey]);
-                document.getElementById('pointScheduledArrivalTime').value = formatDateTimeForInput(point.times[arrTimeKey]);
-                if(timeEditingPriority) document.getElementById('pointScheduledDepartureTime').focus();
+                const container = document.getElementById('lineEndpointTurnSchedulesContainer');
+                container.innerHTML = ''; // Clear previous
+                container.style.display = 'block';
+                document.getElementById('lineEndpointScheduleHelperText').style.display = 'block';
+
+                const totalTurns = routeSettings.totalTurns;
+                // Ensure turnSchedules array is initialized and of correct length
+                if (!point.turnSchedules || point.turnSchedules.length !== totalTurns) {
+                    const newSchedules = new Array(totalTurns);
+                    for (let i = 0; i < totalTurns; i++) {
+                        const existing = (point.turnSchedules && point.turnSchedules[i]) ? point.turnSchedules[i] : {};
+                        newSchedules[i] = {
+                            scheduledDeparture: existing.scheduledDeparture || null,
+                            scheduledArrival: existing.scheduledArrival || null
+                        };
+                    }
+                    point.turnSchedules = newSchedules;
+                }
+
+                for (let i = 0; i < totalTurns; i++) {
+                    const turnNum = i + 1;
+                    const turnSchedule = point.turnSchedules[i];
+
+                    const turnDiv = document.createElement('div');
+                    turnDiv.className = 'turn-schedule-group';
+                    turnDiv.innerHTML = `<h4>Vuelta ${turnNum}</h4>`;
+
+                    let label1Text, input1Id, value1;
+                    let label2Text, input2Id, value2;
+
+                    if (point.isFirstEndpoint) { // P1
+                        label1Text = "Salida Programada (Inicio IDA):";
+                        input1Id = `endpoint_turn_${turnNum}_time1`; // P1 Departure
+                        value1 = turnSchedule.scheduledDeparture;
+
+                        label2Text = "Llegada Programada (Fin VUELTA):";
+                        input2Id = `endpoint_turn_${turnNum}_time2`; // P1 Arrival
+                        value2 = turnSchedule.scheduledArrival;
+                    } else { // P2
+                        label1Text = "Llegada Programada (Fin IDA):";
+                        input1Id = `endpoint_turn_${turnNum}_time1`; // P2 Arrival
+                        value1 = turnSchedule.scheduledArrival;
+
+                        label2Text = "Salida Programada (Inicio VUELTA):";
+                        input2Id = `endpoint_turn_${turnNum}_time2`; // P2 Departure
+                        value2 = turnSchedule.scheduledDeparture;
+                    }
+
+                    turnDiv.innerHTML += `
+                        <label for="${input1Id}">${label1Text}</label>
+                        <input type="datetime-local" id="${input1Id}" value="${formatDateTimeForInput(value1)}">
+                        <label for="${input2Id}">${label2Text}</label>
+                        <input type="datetime-local" id="${input2Id}" value="${formatDateTimeForInput(value2)}">
+                    `;
+                    container.appendChild(turnDiv);
+                }
+                if(timeEditingPriority && document.getElementById(`endpoint_turn_1_time1`)) {
+                    document.getElementById(`endpoint_turn_1_time1`).focus();
+                }
+
             } else if (point.pointCategory === 'intermediateStop') {
                 document.getElementById('intermediateStopTime').style.display = 'block';
-                document.getElementById('pointScheduledTimeIntermediate').value = formatDateTimeForInput(point.times.scheduledIDA);
-                 if(timeEditingPriority) document.getElementById('pointScheduledTimeIntermediate').focus();
+                document.getElementById('pointScheduledTimeIntermediateIDA').value = formatDateTimeForInput(point.times.scheduledIDA);
+                document.getElementById('pointScheduledTimeIntermediateVUELTA').value = formatDateTimeForInput(point.times.scheduledVUELTA);
+                 if(timeEditingPriority) document.getElementById('pointScheduledTimeIntermediateIDA').focus();
             }
             
             document.getElementById('editPointControls').style.display = 'block';
@@ -549,12 +638,16 @@
             currentlyEditingPoint = null;
             document.getElementById('pointName').value = "";
             document.getElementById('pointName').readOnly = false;
-            document.getElementById('pointScheduledDepartureTime').value = "";
-            document.getElementById('pointScheduledArrivalTime').value = "";
-            document.getElementById('pointScheduledTimeIntermediate').value = "";
-            document.getElementById('editPointControls').style.display = 'none';
-            document.getElementById('lineEndpointTimes').style.display = 'none';
+
+            document.getElementById('lineEndpointTurnSchedulesContainer').style.display = 'none';
+            document.getElementById('lineEndpointTurnSchedulesContainer').innerHTML = '';
+            document.getElementById('lineEndpointScheduleHelperText').style.display = 'none';
+            
+            document.getElementById('pointScheduledTimeIntermediateIDA').value = "";
+            document.getElementById('pointScheduledTimeIntermediateVUELTA').value = "";
             document.getElementById('intermediateStopTime').style.display = 'none';
+            
+            document.getElementById('editPointControls').style.display = 'none';
         }
 
         function updateSelectedPoint() {
@@ -567,34 +660,40 @@
             }
 
             if (currentlyEditingPoint.pointCategory === 'lineEndpoint') {
-                const depTimeValue = document.getElementById('pointScheduledDepartureTime').value;
-                const arrTimeValue = document.getElementById('pointScheduledArrivalTime').value;
-                
-                if (!depTimeValue || !arrTimeValue) {
-                    alert("Las Puntas de Línea deben tener horarios de salida y llegada definidos."); return;
-                }
-                const departureTime = new Date(depTimeValue);
-                const arrivalTime = new Date(arrTimeValue);
+                const totalTurns = routeSettings.totalTurns;
+                currentlyEditingPoint.turnSchedules = []; 
 
-                if (isNaN(departureTime.getTime()) || isNaN(arrivalTime.getTime())) {
-                    alert("Formato de fecha/hora inválido para Punta de Línea."); return;
-                }
-                
-                if (currentlyEditingPoint.isFirstEndpoint) {
-                    currentlyEditingPoint.times.departureOutbound = departureTime;
-                    currentlyEditingPoint.times.arrivalReturn = arrivalTime;
-                } else {
-                    currentlyEditingPoint.times.arrivalOutbound = arrivalTime; 
-                    currentlyEditingPoint.times.departureReturn = departureTime; 
-                }
+                for (let i = 0; i < totalTurns; i++) {
+                    const turnNum = i + 1;
+                    const time1Value = document.getElementById(`endpoint_turn_${turnNum}_time1`).value;
+                    const time2Value = document.getElementById(`endpoint_turn_${turnNum}_time2`).value;
+                    
+                    let date1 = time1Value ? new Date(time1Value) : null;
+                    let date2 = time2Value ? new Date(time2Value) : null;
 
+                    if ((time1Value && isNaN(date1.getTime())) || (time2Value && isNaN(date2.getTime()))) {
+                        alert(`Formato de fecha/hora inválido para Punta de Línea, Vuelta ${turnNum}.`); return;
+                    }
+                    
+                    if (currentlyEditingPoint.isFirstEndpoint) { // P1
+                        currentlyEditingPoint.turnSchedules.push({ scheduledDeparture: date1, scheduledArrival: date2 });
+                    } else { // P2
+                        currentlyEditingPoint.turnSchedules.push({ scheduledArrival: date1, scheduledDeparture: date2 });
+                    }
+                }
             } else if (currentlyEditingPoint.pointCategory === 'intermediateStop') {
-                const interTimeValue = document.getElementById('pointScheduledTimeIntermediate').value;
-                currentlyEditingPoint.times.scheduledIDA = interTimeValue ? new Date(interTimeValue) : null;
-                if (interTimeValue && isNaN(currentlyEditingPoint.times.scheduledIDA.getTime())) {
-                     alert("Formato de fecha/hora inválido para Parada Intermedia.");
-                     currentlyEditingPoint.times.scheduledIDA = null; 
-                     return;
+                const idaTimeValue = document.getElementById('pointScheduledTimeIntermediateIDA').value;
+                const vueltaTimeValue = document.getElementById('pointScheduledTimeIntermediateVUELTA').value;
+
+                currentlyEditingPoint.times.scheduledIDA = idaTimeValue ? new Date(idaTimeValue) : null;
+                if (idaTimeValue && isNaN(currentlyEditingPoint.times.scheduledIDA.getTime())) {
+                     alert("Formato de fecha/hora inválido para Parada Intermedia (IDA).");
+                     currentlyEditingPoint.times.scheduledIDA = null; return;
+                }
+                currentlyEditingPoint.times.scheduledVUELTA = vueltaTimeValue ? new Date(vueltaTimeValue) : null;
+                if (vueltaTimeValue && isNaN(currentlyEditingPoint.times.scheduledVUELTA.getTime())) {
+                     alert("Formato de fecha/hora inválido para Parada Intermedia (VUELTA).");
+                     currentlyEditingPoint.times.scheduledVUELTA = null; return;
                 }
             }
             
@@ -648,7 +747,6 @@
                     if (p.pointCategory === 'lineEndpoint') {
                         text = p.name; 
                     } else if (p.pointCategory === 'intermediateStop') {
-                        // Find index among only intermediate stops for display numbering
                         const intermediateStopsOnly = displayOrderedPoints.filter(dp => dp.pointCategory === 'intermediateStop');
                         const displayIdx = intermediateStopsOnly.findIndex(dp => dp.id === p.id);
                         text = (displayIdx !== -1) ? String(displayIdx + 1) : '?';
@@ -673,10 +771,9 @@
             
             if (activePointCreationMode) {
                 document.getElementById('pointName').value = ""; 
-                let pointNameValue = ""; 
                 let newPointData = {
                     id: pointId, lat: latlng.lat, lng: latlng.lng,
-                    originalIndex: routePoints.length, times: {}
+                    originalIndex: routePoints.length, 
                 };
 
                 switch (activePointCreationMode) {
@@ -711,7 +808,7 @@
                             }
                         });
                         routePoints.push(waypoint);
-                        routePoints.sort((a,b) => a.originalIndex - b.originalIndex); // Re-sort just in case, then re-assign indices
+                        routePoints.sort((a,b) => a.originalIndex - b.originalIndex); 
                         routePoints.forEach((p, idx) => p.originalIndex = idx);
 
                         if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes(); 
@@ -734,9 +831,9 @@
                         newPointData.name = isFirstEp ? "Punta de Línea 1" : "Punta de Línea 2";
                         newPointData.pointCategory = 'lineEndpoint';
                         newPointData.isFirstEndpoint = isFirstEp;
-                        newPointData.times = isFirstEp ? 
-                            { departureOutbound: null, arrivalReturn: null } : 
-                            { arrivalOutbound: null, departureReturn: null };
+                        newPointData.turnSchedules = new Array(routeSettings.totalTurns).fill(null).map(() => ({
+                            scheduledDeparture: null, scheduledArrival: null
+                        }));
                         break;
                     default: return; 
                 }
@@ -775,14 +872,12 @@
             }
         }
         
-        // LA TRAZA DIBUJADA AZUL/ROJA DEBE SEGUIR A LOS PUNTOS DE PASO Y A LAS PARADAS INTERMEDIAS... SIEMPRE.
         function getPathPointsForPolyline(flagNameToUse) {
             const allPointsSorted = [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex);
-            if (allPointsSorted.length < 1) return []; // No points, no path
+            if (allPointsSorted.length < 1) return []; 
 
             const lineEndpoints = allPointsSorted.filter(p => p.pointCategory === 'lineEndpoint');
 
-            // If less than 2 endpoints, or no P1/P2 identified, trace all points in order
             if (lineEndpoints.length < 2) {
                 return allPointsSorted;
             }
@@ -790,7 +885,7 @@
             const p1 = lineEndpoints.find(p => p.isFirstEndpoint);
             const p2 = lineEndpoints.find(p => !p.isFirstEndpoint);
 
-            if (!p1 || !p2) { // Should have P1 and P2 if length >= 2
+            if (!p1 || !p2) { 
                 return allPointsSorted;
             }
 
@@ -798,20 +893,18 @@
             const p2ActualIndexInSortedArray = allPointsSorted.findIndex(p => p.id === p2.id);
 
             if (flagNameToUse === routeSettings.flagNameIda) {
-                // IDA: Path from P1 to P2, following the order in allPointsSorted
                 if (p1ActualIndexInSortedArray < p2ActualIndexInSortedArray) {
                     return allPointsSorted.slice(p1ActualIndexInSortedArray, p2ActualIndexInSortedArray + 1);
-                } else { // P1 is after P2 in the list (e.g. P2, ..., P1), IDA path wraps around
+                } else { 
                     return [
                         ...allPointsSorted.slice(p1ActualIndexInSortedArray), 
                         ...allPointsSorted.slice(0, p2ActualIndexInSortedArray + 1)
                     ];
                 }
             } else { // VUELTA
-                // VUELTA: Path from P2 to P1, following the order in allPointsSorted
                 if (p2ActualIndexInSortedArray < p1ActualIndexInSortedArray) {
                     return allPointsSorted.slice(p2ActualIndexInSortedArray, p1ActualIndexInSortedArray + 1);
-                } else { // P2 is after P1 in the list (e.g. P1, ..., P2), VUELTA path wraps around
+                } else { 
                     return [
                         ...allPointsSorted.slice(p2ActualIndexInSortedArray), 
                         ...allPointsSorted.slice(0, p1ActualIndexInSortedArray + 1)
@@ -824,7 +917,10 @@
         function calculateAndApplyAllIntermediateTimes() {
             const autoCalc = document.getElementById('autoCalcTimes').checked;
             if (!autoCalc) { 
-                routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => stop.times.scheduledVUELTA = null);
+                routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => {
+                    stop.times.scheduledIDA = null;
+                    stop.times.scheduledVUELTA = null;
+                });
                 updateStopsList(); return; 
             }
 
@@ -835,37 +931,41 @@
             const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
             if (!p1 || !p2) { updateStopsList(); return; }
 
+            // Use Turn 1 schedules for calculating intermediate stop times
+            if (!p1.turnSchedules || p1.turnSchedules.length === 0 || !p2.turnSchedules || p2.turnSchedules.length === 0) {
+                console.warn("Turn schedules for P1 or P2 are not initialized for auto-calculation.");
+                updateStopsList(); return;
+            }
+            const p1Turn1Schedule = p1.turnSchedules[0];
+            const p2Turn1Schedule = p2.turnSchedules[0];
+
+
             const allPointsSorted = [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex);
             const p1ActualIndex = allPointsSorted.findIndex(p => p.id === p1.id);
             const p2ActualIndex = allPointsSorted.findIndex(p => p.id === p2.id);
 
-            // IDA leg times calculation
-            if (p1.times.departureOutbound && p2.times.arrivalOutbound) {
+            // IDA leg times calculation (based on Turn 1 of P1/P2)
+            if (p1Turn1Schedule.scheduledDeparture && p2Turn1Schedule.scheduledArrival) {
                 let idaLegPath;
                 if (p1ActualIndex < p2ActualIndex) {
                     idaLegPath = allPointsSorted.slice(p1ActualIndex, p2ActualIndex + 1);
                 } else { // Wrap around
                     idaLegPath = [...allPointsSorted.slice(p1ActualIndex), ...allPointsSorted.slice(0, p2ActualIndex + 1)];
                 }
-                distributeTimesProportionally(idaLegPath, new Date(p1.times.departureOutbound), new Date(p2.times.arrivalOutbound), 'scheduledIDA');
+                distributeTimesProportionally(idaLegPath, new Date(p1Turn1Schedule.scheduledDeparture), new Date(p2Turn1Schedule.scheduledArrival), 'scheduledIDA');
             } else {
                 routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => stop.times.scheduledIDA = null);
             }
 
-            // VUELTA leg times calculation (only if auto-calc is on and it's a simple reversal)
-            // For distinct VUELTA paths, times would need manual input or more complex logic
-            // This part assumes VUELTA reuses IDA intermediates in reverse if auto-calculating.
-            if (p2.times.departureReturn && p1.times.arrivalReturn) {
+            // VUELTA leg times calculation (based on Turn 1 of P1/P2)
+            if (p2Turn1Schedule.scheduledDeparture && p1Turn1Schedule.scheduledArrival) {
                 let vueltaLegPath;
                  if (p2ActualIndex < p1ActualIndex) {
                     vueltaLegPath = allPointsSorted.slice(p2ActualIndex, p1ActualIndex + 1);
                 } else { // Wrap around
                     vueltaLegPath = [...allPointsSorted.slice(p2ActualIndex), ...allPointsSorted.slice(0, p1ActualIndex + 1)];
                 }
-                // If vueltaLegPath reuses the same intermediate stops as IDA (just P1 and P2 swapped)
-                // then distribute proportionally. Otherwise, this needs to be smarter or disabled for complex routes.
-                // For now, this will calculate for the VUELTA path defined by P2->P1 slice.
-                distributeTimesProportionally(vueltaLegPath, new Date(p2.times.departureReturn), new Date(p1.times.arrivalReturn), 'scheduledVUELTA');
+                distributeTimesProportionally(vueltaLegPath, new Date(p2Turn1Schedule.scheduledDeparture), new Date(p1Turn1Schedule.scheduledArrival), 'scheduledVUELTA');
             } else {
                 routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => stop.times.scheduledVUELTA = null);
             }
@@ -880,13 +980,17 @@
             const totalDurationMillis = legEndMillis - legStartMillis;
 
             const intermediateStopsInLeg = legPathPoints.slice(1, -1).filter(p => p.pointCategory === 'intermediateStop');
-            if (totalDurationMillis <= 0) {
-                intermediateStopsInLeg.forEach(p => {
-                    const pointInMainRoute = routePoints.find(rp => rp.id === p.id);
-                    if(pointInMainRoute) pointInMainRoute.times[timeKey] = null;
+            if (totalDurationMillis <= 0) { // Includes same start/end time
+                intermediateStopsInLeg.forEach(p_leg => {
+                    const pointInMainRoute = routePoints.find(rp => rp.id === p_leg.id);
+                    if(pointInMainRoute) {
+                        // If duration is zero, set intermediate times to be same as leg start time
+                        pointInMainRoute.times[timeKey] = new Date(legStartMillis); 
+                    }
                 });
                 return;
             }
+
 
             let totalDistance = 0;
             const segmentDistances = [];
@@ -933,13 +1037,12 @@
             routePoints = [];
             if (routeLine) map.removeLayer(routeLine); routeLine = null;
             document.getElementById('pointName').value = "";
-            // Reset editing flag view to default (IDA)
             currentEditingFlagView = routeSettings.flagNameIda;
             const editFlagBtn = document.getElementById('toggleEditingFlagViewBtn');
             if(editFlagBtn) editFlagBtn.textContent = `Vista Trazado: ${routeSettings.flagNameIda}`;
 
             updateStopsList(); updateAllMarkerIconsAndLabels(); 
-            redrawRouteLine(); // Add this to clear the line from map if any
+            redrawRouteLine(); 
         }
 
         function redrawRouteLine() {
@@ -956,10 +1059,8 @@
         }
         
         function getSortedRoutePointsForDisplay() { 
-            // Display all points, sorted by originalIndex, for the list.
-            // The list shows P1, then intermediates between P1 & P2, then P2, then any points after P2.
             return [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex)
-                                  .filter(p => p.pointCategory !== 'waypoint'); // Waypoints not in stops list
+                                  .filter(p => p.pointCategory !== 'waypoint'); 
         }
 
         function formatTime(dateObj, includeDate = true) { 
@@ -977,7 +1078,7 @@
 
             if (displayPoints.length === 0) { listDiv.innerHTML = "No hay puntos definidos."; return; }
 
-            let html = "<ul style='padding-left: 10px; list-style: none;'>"; // Using none for custom numbering effect
+            let html = "<ul style='padding-left: 10px; list-style: none;'>";
             let intermediateVisualCounter = 1; 
             let overallCounter = 1;
             displayPoints.forEach((p) => { 
@@ -988,15 +1089,28 @@
 
                 if (p.pointCategory === 'lineEndpoint') {
                     itemClass += " line-endpoint-highlight";
-                    typeText = p.isFirstEndpoint ? "P1" : "P2"; // Simpler P1/P2
-                    const dep = p.isFirstEndpoint ? p.times.departureOutbound : p.times.departureReturn;
-                    const arr = p.isFirstEndpoint ? p.times.arrivalReturn : p.times.arrivalOutbound;
-                    timeStr = `Sal: ${formatTime(dep, false)} / Lleg: ${formatTime(arr, false)}`;
-                    if (dep) timeStr += ` (${new Date(dep).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
+                    typeText = p.isFirstEndpoint ? "P1" : "P2";
+                    if (p.turnSchedules && p.turnSchedules.length > 0) {
+                        const turn1Schedule = p.turnSchedules[0];
+                        let depTime, arrTime;
+                        if (p.isFirstEndpoint) {
+                            depTime = turn1Schedule.scheduledDeparture; // P1 IDA departure
+                            arrTime = turn1Schedule.scheduledArrival;   // P1 VUELTA arrival
+                        } else {
+                            arrTime = turn1Schedule.scheduledArrival;   // P2 IDA arrival
+                            depTime = turn1Schedule.scheduledDeparture; // P2 VUELTA departure
+                        }
+                        timeStr = `Sal (V1): ${formatTime(depTime, false)} / Lleg (V1): ${formatTime(arrTime, false)}`;
+                        if (depTime) timeStr += ` (${new Date(depTime).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
+                        else if(arrTime) timeStr += ` (${new Date(arrTime).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
+                    } else {
+                        timeStr = "Horarios no definidos";
+                    }
                 } else if (p.pointCategory === 'intermediateStop') {
                     typeText = `Inter. ${intermediateVisualCounter++}`;
                     timeStr = `IDA: ${formatTime(p.times.scheduledIDA, false)} / VTA: ${formatTime(p.times.scheduledVUELTA, false)}`;
                     if (p.times.scheduledIDA) timeStr += ` (${new Date(p.times.scheduledIDA).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
+                    else if (p.times.scheduledVUELTA) timeStr += ` (${new Date(p.times.scheduledVUELTA).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
                 }
                 html += `<li class="${itemClass}" onclick="focusPointOnMap('${p.id}')">${prefix}<b>${p.name}</b> (${typeText}) - ${timeStr}</li>`;
             });
@@ -1023,10 +1137,22 @@
             }
             const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint);
             const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
-            if (!p1 || !p2 || 
-                !p1.times.departureOutbound || !p1.times.arrivalReturn ||
-                !p2.times.arrivalOutbound || !p2.times.departureReturn) {
-                alert("Ambas Puntas de Línea (P1 y P2) deben tener sus 4 horarios clave definidos.");
+
+            if (!p1 || !p2) {
+                alert("P1 y/o P2 no están correctamente identificados. Revisa la configuración de las puntas de línea."); return;
+            }
+
+            let allEndpointTimesSet = true;
+            for (let i = 0; i < routeSettings.totalTurns; i++) {
+                if (!p1.turnSchedules || !p1.turnSchedules[i] || !p1.turnSchedules[i].scheduledDeparture || !p1.turnSchedules[i].scheduledArrival) {
+                    allEndpointTimesSet = false; break;
+                }
+                if (!p2.turnSchedules || !p2.turnSchedules[i] || !p2.turnSchedules[i].scheduledArrival || !p2.turnSchedules[i].scheduledDeparture) {
+                    allEndpointTimesSet = false; break;
+                }
+            }
+            if (!allEndpointTimesSet) {
+                alert("Ambas Puntas de Línea (P1 y P2) deben tener sus horarios de salida y llegada definidos para CADA VUELTA.");
                 return;
             }
 
@@ -1035,20 +1161,18 @@
                     id: p.id, lat: p.lat, lng: p.lng, name: p.name, 
                     pointCategory: p.pointCategory,
                     originalIndex: p.originalIndex,
-                    times: {} 
                 };
                 if (p.pointCategory === 'lineEndpoint') {
                     pointData.isFirstEndpoint = p.isFirstEndpoint;
-                    if (p.isFirstEndpoint) {
-                        pointData.times.departureOutbound = p.times.departureOutbound ? new Date(p.times.departureOutbound).toISOString() : null;
-                        pointData.times.arrivalReturn = p.times.arrivalReturn ? new Date(p.times.arrivalReturn).toISOString() : null;
-                    } else {
-                        pointData.times.arrivalOutbound = p.times.arrivalOutbound ? new Date(p.times.arrivalOutbound).toISOString() : null;
-                        pointData.times.departureReturn = p.times.departureReturn ? new Date(p.times.departureReturn).toISOString() : null;
-                    }
+                    pointData.turnSchedules = (p.turnSchedules || []).map(ts => ({
+                        scheduledDeparture: ts.scheduledDeparture ? new Date(ts.scheduledDeparture).toISOString() : null,
+                        scheduledArrival: ts.scheduledArrival ? new Date(ts.scheduledArrival).toISOString() : null
+                    }));
                 } else if (p.pointCategory === 'intermediateStop') {
-                    pointData.times.scheduledIDA = p.times.scheduledIDA ? new Date(p.times.scheduledIDA).toISOString() : null;
-                    pointData.times.scheduledVUELTA = p.times.scheduledVUELTA ? new Date(p.times.scheduledVUELTA).toISOString() : null;
+                    pointData.times = {
+                        scheduledIDA: p.times.scheduledIDA ? new Date(p.times.scheduledIDA).toISOString() : null,
+                        scheduledVUELTA: p.times.scheduledVUELTA ? new Date(p.times.scheduledVUELTA).toISOString() : null
+                    };
                 }
                 return pointData;
             });
@@ -1074,31 +1198,41 @@
             document.getElementById('totalTurnsInput').value = routeSettings.totalTurns;
             document.getElementById('flagNameIdaInput').value = routeSettings.flagNameIda;
             document.getElementById('flagNameVueltaInput').value = routeSettings.flagNameVuelta;
-
-            // Update currentEditingFlagView and its button based on loaded settings
             currentEditingFlagView = routeSettings.flagNameIda;
             const editFlagBtn = document.getElementById('toggleEditingFlagViewBtn');
             if (editFlagBtn) editFlagBtn.textContent = `Vista Trazado: ${routeSettings.flagNameIda}`;
-            
             trackingState.currentFlag = routeSettings.flagNameIda;
 
 
             loadedPointsData.forEach((p_data) => {
-                const newPointBase = { ...p_data, times: {} }; 
+                const newPointBase = { ...p_data }; 
+                delete newPointBase.times; // Remove old times structure if present from very old saves
+                delete newPointBase.turnSchedules; // Remove this before re-assigning
 
                 if (p_data.pointCategory === 'lineEndpoint') {
                     newPointBase.isFirstEndpoint = p_data.isFirstEndpoint; 
-                    if (p_data.isFirstEndpoint) { 
-                        newPointBase.times.departureOutbound = p_data.times.departureOutbound ? new Date(p_data.times.departureOutbound) : null;
-                        newPointBase.times.arrivalReturn = p_data.times.arrivalReturn ? new Date(p_data.times.arrivalReturn) : null;
-                    } else { 
-                        newPointBase.times.arrivalOutbound = p_data.times.arrivalOutbound ? new Date(p_data.times.arrivalOutbound) : null;
-                        newPointBase.times.departureReturn = p_data.times.departureReturn ? new Date(p_data.times.departureReturn) : null;
+                    newPointBase.turnSchedules = (p_data.turnSchedules || []).map(ts_data => ({
+                         scheduledDeparture: ts_data.scheduledDeparture ? new Date(ts_data.scheduledDeparture) : null,
+                         scheduledArrival: ts_data.scheduledArrival ? new Date(ts_data.scheduledArrival) : null
+                    }));
+                    // Ensure turnSchedules length matches current routeSettings.totalTurns
+                    if (newPointBase.turnSchedules.length !== routeSettings.totalTurns) {
+                        const adjustedSchedules = new Array(routeSettings.totalTurns);
+                        for(let i=0; i < routeSettings.totalTurns; i++) {
+                            adjustedSchedules[i] = newPointBase.turnSchedules[i] || { scheduledDeparture: null, scheduledArrival: null };
+                        }
+                        newPointBase.turnSchedules = adjustedSchedules;
                     }
+
                 } else if (p_data.pointCategory === 'intermediateStop') {
-                     newPointBase.times.scheduledIDA = p_data.times.scheduledIDA ? new Date(p_data.times.scheduledIDA) : null;
-                     newPointBase.times.scheduledVUELTA = p_data.times.scheduledVUELTA ? new Date(p_data.times.scheduledVUELTA) : null;
+                     newPointBase.times = {
+                        scheduledIDA: p_data.times && p_data.times.scheduledIDA ? new Date(p_data.times.scheduledIDA) : null,
+                        scheduledVUELTA: p_data.times && p_data.times.scheduledVUELTA ? new Date(p_data.times.scheduledVUELTA) : null
+                     };
+                } else if (p_data.pointCategory === 'waypoint') {
+                    // Waypoints don't have special time structures here
                 }
+
 
                 const newPoint = { ...newPointBase }; 
                 routePoints.push(newPoint);
@@ -1125,7 +1259,7 @@
                             if (confirm(`¿Borrar este punto de paso "${p.name}"?`)) {
                                 map.removeLayer(p.marker);
                                 routePoints = routePoints.filter(rp => rp.id !== p.id);
-                                routePoints.forEach((rp, idx) => rp.originalIndex = idx); // Re-index
+                                routePoints.forEach((rp, idx) => rp.originalIndex = idx); 
                                 redrawRouteLine();
                                 if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes();
                             }
@@ -1149,7 +1283,7 @@
             redrawRouteLine();
             updateStopsList();
 
-            const boundsPoints = routePoints; // Consider all points for bounds
+            const boundsPoints = routePoints; 
             if (boundsPoints.length > 0) {
                 const bounds = L.latLngBounds(boundsPoints.map(p => [p.lat, p.lng]));
                 if (bounds.isValid()) map.fitBounds(bounds);
@@ -1205,43 +1339,68 @@
             updateRouteQueueDisplay();
         }
         
+        function getEndpointTimesForTurn(point, turnNumber) { // turnNumber is 1-based
+            if (!point || point.pointCategory !== 'lineEndpoint' || !point.turnSchedules || 
+                turnNumber < 1 || turnNumber > point.turnSchedules.length || !point.turnSchedules[turnNumber - 1]) {
+                return { departureIDA: null, arrivalIDA: null, departureVUELTA: null, arrivalVUELTA: null };
+            }
+            const turnSchedule = point.turnSchedules[turnNumber - 1];
+            if (point.isFirstEndpoint) { // P1
+                return {
+                    departureIDA: turnSchedule.scheduledDeparture, 
+                    arrivalVUELTA: turnSchedule.scheduledArrival,
+                    arrivalIDA: null, // P1 doesn't have IDA arrival in this context
+                    departureVUELTA: null // P1 doesn't have VUELTA departure in this context
+                };
+            } else { // P2
+                return {
+                    arrivalIDA: turnSchedule.scheduledArrival,     
+                    departureVUELTA: turnSchedule.scheduledDeparture,
+                    departureIDA: null, // P2 doesn't have IDA departure
+                    arrivalVUELTA: null // P2 doesn't have VUELTA arrival
+                };
+            }
+        }
+
+
         function setupCurrentLegForTracking() {
             trackingState.activeLegPoints = [];
-            const legPathPoints = getPathPointsForPolyline(trackingState.currentFlag);
-            if(legPathPoints.length === 0) {
+            const legPathPointsSource = getPathPointsForPolyline(trackingState.currentFlag); // These are from routePoints
+            if(legPathPointsSource.length === 0) {
                 console.error("No points found for current leg in tracking.");
                 return false;
             }
 
-            // Need to map these leg path points (which could be raw from routePoints)
-            // to have 'effectiveScheduledTime' for tracking logic.
-            // This requires knowing which time field to use (departureOutbound, arrivalOutbound, scheduledIDA, etc.)
-            // For simplicity, trackingState.activeLegPoints will use the `times` from original routePoints.
-            // The time deviation logic needs to be robust to find the correct scheduled times based on point type and flag.
-
-            // The getPathPointsForPolyline now returns the correct sequence of points for the current flag.
-            // We need to associate scheduled times with these.
             const lineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
             const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint);
             const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
 
-            trackingState.activeLegPoints = legPathPoints.map(legPoint => {
-                const originalPoint = routePoints.find(rp => rp.id === legPoint.id);
-                if (!originalPoint) return { ...legPoint, effectiveScheduledTime: null }; // Should not happen
+            if (!p1 || !p2 || !p1.turnSchedules || !p2.turnSchedules || 
+                trackingState.currentTurn > p1.turnSchedules.length || 
+                trackingState.currentTurn > p2.turnSchedules.length ) {
+                alert(`Horarios de Puntas de Línea incompletos para la vuelta ${trackingState.currentTurn}.`);
+                return false;
+            }
+
+            const p1TimesForCurrentTurn = getEndpointTimesForTurn(p1, trackingState.currentTurn);
+            const p2TimesForCurrentTurn = getEndpointTimesForTurn(p2, trackingState.currentTurn);
+            
+            trackingState.activeLegPoints = legPathPointsSource.map(legPoint => {
+                const originalPoint = routePoints.find(rp => rp.id === legPoint.id); // Should always find it
+                if (!originalPoint) return { ...legPoint, effectiveScheduledTime: null }; 
 
                 let effTime = null;
                 if (originalPoint.pointCategory === 'lineEndpoint') {
                     if (trackingState.currentFlag === routeSettings.flagNameIda) { // IDA leg
-                        if (originalPoint.id === p1?.id) effTime = originalPoint.times.departureOutbound;
-                        else if (originalPoint.id === p2?.id) effTime = originalPoint.times.arrivalOutbound;
+                        if (originalPoint.id === p1?.id) effTime = p1TimesForCurrentTurn.departureIDA;
+                        else if (originalPoint.id === p2?.id) effTime = p2TimesForCurrentTurn.arrivalIDA;
                     } else { // VUELTA leg
-                        if (originalPoint.id === p2?.id) effTime = originalPoint.times.departureReturn;
-                        else if (originalPoint.id === p1?.id) effTime = originalPoint.times.arrivalReturn;
+                        if (originalPoint.id === p2?.id) effTime = p2TimesForCurrentTurn.departureVUELTA;
+                        else if (originalPoint.id === p1?.id) effTime = p1TimesForCurrentTurn.arrivalVUELTA;
                     }
                 } else if (originalPoint.pointCategory === 'intermediateStop') {
                     effTime = (trackingState.currentFlag === routeSettings.flagNameIda) ? originalPoint.times.scheduledIDA : originalPoint.times.scheduledVUELTA;
                 }
-                // Waypoints don't have scheduled times for deviation calculation in this model.
                 return { ...originalPoint, effectiveScheduledTime: effTime ? new Date(effTime) : null };
             });
 
@@ -1260,13 +1419,24 @@
             setActiveMode(null); 
             const lineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
             if (lineEndpoints.length < 2) { alert("La ruta debe tener dos Puntas de Línea (P1 y P2)."); return; }
-             if (!lineEndpoints.find(ep => ep.isFirstEndpoint) || !lineEndpoints.find(ep => !ep.isFirstEndpoint)){
-                alert("P1 y/o P2 no están correctamente definidos."); return;
+            const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint);
+            const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
+            if (!p1 || !p2){ alert("P1 y/o P2 no están correctamente definidos."); return; }
+            
+            // Check if all turns have schedules for P1 and P2
+            for (let i = 0; i < routeSettings.totalTurns; i++) {
+                const turnNum = i + 1;
+                const p1t = getEndpointTimesForTurn(p1, turnNum);
+                const p2t = getEndpointTimesForTurn(p2, turnNum);
+                if (!p1t.departureIDA || !p1t.arrivalVUELTA || !p2t.arrivalIDA || !p2t.departureVUELTA) {
+                    alert(`Horarios incompletos para P1/P2 en Vuelta ${turnNum}. No se puede iniciar seguimiento.`);
+                    return;
+                }
             }
             
             isTracking = true;
             trackingState.currentTurn = 1;
-            trackingState.currentFlag = routeSettings.flagNameIda; // Start with IDA
+            trackingState.currentFlag = routeSettings.flagNameIda; 
             currentSegmentStartIndex = 0; 
             
             if (!setupCurrentLegForTracking()) {
@@ -1303,12 +1473,11 @@
             document.getElementById('routeCreationSection').style.display = 'block'; 
             if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
             
-            // Reset view to IDA for editing when tracking stops
             currentEditingFlagView = routeSettings.flagNameIda;
             const editFlagBtn = document.getElementById('toggleEditingFlagViewBtn');
             if (editFlagBtn) editFlagBtn.textContent = `Vista Trazado: ${routeSettings.flagNameIda}`;
             
-            trackingState.currentFlag = routeSettings.flagNameIda; // Prepare for next potential tracking
+            trackingState.currentFlag = routeSettings.flagNameIda; 
             redrawRouteLine(); updateStopsList(); 
             currentSegmentStartIndex = 0; 
             updateManualNavButtons();
@@ -1321,7 +1490,7 @@
                 alert("Ruta completada!"); checkRouteQueue();
             } else {
                 const msg = "Seguimiento detenido." + (reason ? " Razón: " + reason : "");
-                console.log(msg); if (reason) alert(msg);
+                console.log(msg); if (reason && reason.startsWith("Error")) alert(msg); // Only alert actual errors
                 document.getElementById('trackingInfoDisplay').textContent = "SEGUIMIENTO DETENIDO";
             }
         }
@@ -1346,7 +1515,7 @@
                 prevBtn.style.display = 'inline-block';
                 nextBtn.style.display = 'inline-block';
                 prevBtn.disabled = currentSegmentStartIndex === 0;
-                nextBtn.disabled = currentSegmentStartIndex >= trackingState.activeLegPoints.length - 2; 
+                nextBtn.disabled = currentSegmentStartIndex >= trackingState.activeLegPoints.length - 2; // -2 because target is index+1
             } else {
                 prevBtn.style.display = 'none'; nextBtn.style.display = 'none';
             }
@@ -1357,7 +1526,7 @@
             const { latitude, longitude, speed } = position.coords;
             if (!userMarker) userMarker = L.marker([latitude, longitude], { icon: createUserLocationIcon() }).addTo(map);
             else userMarker.setLatLng([latitude, longitude]);
-            map.panTo([latitude, longitude], {animate: true, duration: 0.5}); 
+            // map.panTo([latitude, longitude], {animate: true, duration: 0.5}); // Can be annoying if map is manually panned
             document.getElementById('speedDisplay').textContent = `Velocidad: ${(speed ? (speed * 3.6) : 0).toFixed(1)} KM/H`;
 
             if (!trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) {
@@ -1369,7 +1538,7 @@
 
             if (!manualNav) {
                 const currentTargetPoint = trackingState.activeLegPoints[currentSegmentStartIndex + 1];
-                if (currentTargetPoint && currentTargetPoint.pointCategory !== 'waypoint') { // Only auto-advance for stops/endpoints
+                if (currentTargetPoint && currentTargetPoint.pointCategory !== 'waypoint') { 
                     const distanceToTarget = L.latLng(latitude, longitude).distanceTo(L.latLng(currentTargetPoint.lat, currentTargetPoint.lng));
                     if (distanceToTarget < currentStopRadius) {
                         advanceToNextActivePoint(); advancedThisTick = true;
@@ -1436,14 +1605,12 @@
                 currentSegmentStartIndex < trackingState.activeLegPoints.length - 1) {
                 
                 let displayableNextTarget = null;
-                // Find next non-waypoint target for display in "Next Stop"
                 for(let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++){
                     if(trackingState.activeLegPoints[i].pointCategory !== 'waypoint'){
                         displayableNextTarget = trackingState.activeLegPoints[i];
                         break;
                     }
                 }
-                // If no non-waypoint found, but there IS a next point (must be waypoint)
                 if (!displayableNextTarget && trackingState.activeLegPoints.length > currentSegmentStartIndex +1 ) {
                      displayableNextTarget = trackingState.activeLegPoints[currentSegmentStartIndex + 1];
                 }
@@ -1451,7 +1618,6 @@
 
                 if(displayableNextTarget) {
                     nextStopName = displayableNextTarget.name;
-                    // Highlight in the actual list (which only shows stops/endpoints)
                     const listPoints = getSortedRoutePointsForDisplay(); 
                     const displayIndexInList = listPoints.findIndex(dp => dp.id === displayableNextTarget.id);
                     
@@ -1479,7 +1645,7 @@
             const pointB = trackingState.activeLegPoints[currentSegmentStartIndex + 1];
 
             if (!pointA || !pointB || !pointA.effectiveScheduledTime || !pointB.effectiveScheduledTime ||
-                pointA.pointCategory === 'waypoint' || pointB.pointCategory === 'waypoint') { // Waypoints don't affect time deviation
+                pointA.pointCategory === 'waypoint' || pointB.pointCategory === 'waypoint') { 
                 document.getElementById('timeDeviation').textContent = "N/A_T";
                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
                 return;
@@ -1490,7 +1656,7 @@
 
             if (segmentTotalScheduledMillis <= 0 && !(scheduledTimeA.getTime() === scheduledTimeB.getTime() && pointA.id === pointB.id) ) { 
                 document.getElementById('timeDeviation').textContent = "ERR_DUR";
-                document.getElementById('timeDeviation').style.color = "#FFA500";
+                document.getElementById('timeDeviation').style.color = "#FFA500"; // Orange for duration error
                 return;
             }
 
@@ -1501,10 +1667,14 @@
             let progressPercentage;
 
             if (distanceTotalSegment < 1.0) { 
-                progressPercentage = 0; 
-                 const now = new Date();
+                // If segment is tiny, assume progress is 0 unless very close to B
+                const distToBForTiny = currentUserLatLng.distanceTo(latLngB);
+                progressPercentage = (distToBForTiny < 5.0 && distanceTotalSegment > 0.1) ? 1.0 : 0.0;
+                 // For tiny segments, deviation is essentially against the scheduled time of A or B
+                const now = new Date();
                 let expectedTimeAtCurrentPosMillis;
-                if (now.getTime() > (scheduledTimeA.getTime() + segmentTotalScheduledMillis / 2)) {
+                // If segment is point-like or duration is zero, compare to B if past midpoint of A's time, else A
+                if(segmentTotalScheduledMillis === 0 || now.getTime() > (scheduledTimeA.getTime() + segmentTotalScheduledMillis / 2)){
                     expectedTimeAtCurrentPosMillis = scheduledTimeB.getTime();
                 } else {
                     expectedTimeAtCurrentPosMillis = scheduledTimeA.getTime();
@@ -1514,15 +1684,29 @@
                 return;
             }
             
+            // Projection logic (simplified)
             const distToA = currentUserLatLng.distanceTo(latLngA); 
             const distToB = currentUserLatLng.distanceTo(latLngB); 
+
             if (distToA < 10.0) progressPercentage = 0.0; 
             else if (distToB < 10.0) progressPercentage = 1.0; 
-            else if (Math.abs(distToA - (distanceTotalSegment + distToB)) < 20.0 && distToA > distanceTotalSegment) progressPercentage = 1.0; 
-            else if (Math.abs(distToB - (distanceTotalSegment + distToA)) < 20.0 && distToB > distanceTotalSegment) progressPercentage = 0.0; 
+            // Check if user is "beyond" B relative to A->B vector
+            else if (distToA > distanceTotalSegment && distToA > distToB) progressPercentage = 1.0;
+            // Check if user is "before" A relative to A->B vector
+            else if (distToB > distanceTotalSegment && distToB > distToA) progressPercentage = 0.0;
             else { 
-                const dist_A_to_P_prime_on_AB = (Math.pow(distanceTotalSegment, 2) + Math.pow(distToA, 2) - Math.pow(distToB, 2)) / (2 * distanceTotalSegment);
-                progressPercentage = dist_A_to_P_prime_on_AB / distanceTotalSegment;
+                 // Using a simplified approach: proportion of distance along the line segment
+                // This is an approximation and doesn't handle being off-route well.
+                // A more robust method uses vector projection.
+                // Simplified: (TotalDist - DistToB) / TotalDist
+                // This assumes user is roughly on the segment between A and B
+                let projectedProgress = (distanceTotalSegment - distToB) / distanceTotalSegment;
+                progressPercentage = Math.max(0, Math.min(1, projectedProgress));
+                 // If distances suggest user is closer to A than projection indicates, or vice versa, cap it.
+                 // Example: if dist_A_to_P_prime_on_AB logic from previous version is preferred:
+                 const dist_A_to_P_prime_on_AB = (Math.pow(distanceTotalSegment, 2) + Math.pow(distToA, 2) - Math.pow(distToB, 2)) / (2 * distanceTotalSegment);
+                 progressPercentage = dist_A_to_P_prime_on_AB / distanceTotalSegment;
+
             }
             progressPercentage = Math.max(0, Math.min(1, progressPercentage)); 
 
@@ -1565,29 +1749,63 @@
         function updateRouteQueueDisplay() { 
             const queueDiv = document.getElementById('routeQueueDisplay'); const queue = getRouteQueue();
             if (queue.length === 0) { queueDiv.innerHTML = "Vacía."; } 
-            else { let html = "<ol>"; queue.forEach(rn => { html += `<li>${rn}</li>`; }); html += "</ol>"; queueDiv.innerHTML = html; }
+            else { let html = "<ol style='padding-left: 20px; margin-top: 5px;'>"; queue.forEach(rn => { html += `<li>${rn}</li>`; }); html += "</ol>"; queueDiv.innerHTML = html; }
         }
         function clearRouteQueue() { if (confirm("¿Limpiar toda la cola?")) saveRouteQueue([]);}
+        
         function checkRouteQueue() { 
             let queue = getRouteQueue();
             if (queue.length > 0) {
                 const nextRouteName = queue.shift(); saveRouteQueue(queue); 
-                if (confirm(`Ruta finalizada. ¿Iniciar siguiente: "${nextRouteName}"?`)) {
+                if (confirm(`Ruta finalizada. ¿Iniciar siguiente ruta de la cola: "${nextRouteName}"?`)) {
                     const savedRoutesSelect = document.getElementById('savedRoutes');
-                    if (Array.from(savedRoutesSelect.options).some(opt => opt.value === nextRouteName)) {
-                        savedRoutesSelect.value = nextRouteName; loadRoute(); 
+                    // Check if the route name exists in the dropdown
+                    let routeExists = false;
+                    for (let i = 0; i < savedRoutesSelect.options.length; i++) {
+                        if (savedRoutesSelect.options[i].value === nextRouteName) {
+                            routeExists = true;
+                            break;
+                        }
+                    }
+
+                    if (routeExists) {
+                        savedRoutesSelect.value = nextRouteName; 
+                        loadRoute(); // This function is synchronous for data loading
+                        
+                        // Use a timeout to ensure DOM updates from loadRoute (if any) are processed
+                        // and then attempt to start tracking.
                         setTimeout(() => { 
-                            const lineEndpoints = routePoints.filter(p=>p.pointCategory==='lineEndpoint');
-                            if (lineEndpoints.length >=2 && lineEndpoints.find(ep=>ep.isFirstEndpoint) && lineEndpoints.find(ep=>!ep.isFirstEndpoint)) {
+                            // Re-validate P1/P2 and their schedules for all turns for the newly loaded route
+                            const lineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
+                            const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint);
+                            const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
+                            let canStart = p1 && p2;
+                            if (canStart) {
+                                for (let i = 0; i < routeSettings.totalTurns; i++) {
+                                    const turnNum = i + 1;
+                                    const p1t = getEndpointTimesForTurn(p1, turnNum);
+                                    const p2t = getEndpointTimesForTurn(p2, turnNum);
+                                    if (!p1t.departureIDA || !p1t.arrivalVUELTA || !p2t.arrivalIDA || !p2t.departureVUELTA) {
+                                        canStart = false; break;
+                                    }
+                                }
+                            }
+
+                            if (canStart) {
                                 startTracking();
                             } else {
-                                alert("Error al cargar ruta de cola o es inválida (P1/P2 faltantes o mal configurados).");
+                                alert(`Error al cargar la ruta "${nextRouteName}" de la cola o sus horarios son inválidos. Verifique la configuración de P1/P2 para todas las vueltas.`);
                             }
                         }, 500); 
-                    } else alert(`Ruta "${nextRouteName}" no encontrada.`);
-                } else alert("Siguiente ruta no iniciada.");
+                    } else {
+                        alert(`La ruta "${nextRouteName}" de la cola ya no existe o no se pudo encontrar.`);
+                    }
+                } else {
+                    alert("Siguiente ruta de la cola no iniciada.");
+                }
             }
         }
+
 
         function updateGlobalStopRadiusSettings() { 
             const newRadius = parseInt(document.getElementById('stopRadiusInput').value, 10);
@@ -1603,7 +1821,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            initMap(); // Calls updateRouteSettings, which sets currentEditingFlagView and button text
+            initMap(); 
             loadSavedRoutesLists(); 
             updateStopsList(); 
             updateManualNavButtons(); 
