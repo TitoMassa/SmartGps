@@ -708,6 +708,8 @@
             const endPoint = allPointsSorted.find(p => p.pointCategory === 'lineEndpoint' && !p.isStartPoint);
 
             if (!startPoint || !endPoint) {
+                 // If no proper start/end, just return all points that are not intermediate stops, maintaining original order
+                 // This might happen during route creation before both PI/PF are set.
                  return allPointsSorted.filter(p => p.pointCategory !== 'intermediateStop').map(p => ({...p}));
             }
 
@@ -715,29 +717,57 @@
             const endIndexInSorted = allPointsSorted.findIndex(p => p.id === endPoint.id);
 
             let segmentPoints;
+            // This logic handles if start/end points were added out of "natural" order in the routePoints array
+            // but assumes a linear path from the defined "Start Point" to "End Point" through intermediate points.
+            // For a simple unidirectional route, this means taking all points between start and end in their `originalIndex` order.
+            // If the start point has a higher originalIndex than the end point (which shouldn't happen in a typical creation flow for unidirectional),
+            // this current logic might draw a "wraparound" line. For a simple unidirectional, we assume start index < end index.
+            // The sort by originalIndex at the beginning helps, but the path considered is strictly between the *marked* Start and End points.
             if (startIndexInSorted <= endIndexInSorted) {
                 segmentPoints = allPointsSorted.slice(startIndexInSorted, endIndexInSorted + 1);
             } else {
+                // This case (start index > end index) implies the "End Point" was placed earlier in the array than the "Start Point"
+                // based on originalIndex. For a strictly unidirectional flow, this might be an edge case for drawing,
+                // but time calculations should still rely on the designated PI and PF times.
+                // For polyline drawing, if this case means a "loop" or incorrect segment,
+                // it's an issue with how PI/PF relate to originalIndex.
+                // However, given the simple unidirectional nature, we expect PI's originalIndex < PF's originalIndex.
+                // If not, the user might have to re-order or re-think point placement.
+                // For now, let's assume the primary use case is PI.originalIndex < PF.originalIndex for the segment.
+                // If the user defines points A, PF, B, PI, C (in order of clicking),
+                // and PI is "Punto de Inicio" and PF is "Punto Final", the segment should be PI -> C -> (wrap?) -> A -> PF.
+                // The current slice logic correctly handles this "wraparound" if points are sorted by originalIndex.
                 segmentPoints = [
-                    ...allPointsSorted.slice(startIndexInSorted),
-                    ...allPointsSorted.slice(0, endIndexInSorted + 1)
+                    ...allPointsSorted.slice(startIndexInSorted), // From start to end of array
+                    ...allPointsSorted.slice(0, endIndexInSorted + 1) // From beginning of array to end point
                 ];
             }
+            // Filter this segment to only include points relevant for the polyline path (all types).
             return segmentPoints.filter(p =>
                 p.pointCategory === 'lineEndpoint' ||
                 p.pointCategory === 'waypoint' ||
                 p.pointCategory === 'intermediateStop'
-            ).map(p => ({...p}));
+            ).map(p => ({...p})); // Return copies
         }
 
 
         function calculateAndApplyAllIntermediateTimes() {
             const autoCalc = document.getElementById('autoCalcTimes').checked;
             if (!autoCalc) {
+                // When autocalc is disabled, clear previously calculated times for intermediate stops.
+                // User might want to set them manually or leave them as N/A.
                 routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => {
-                    stop.scheduledTime = null;
+                    // Do not nullify if they were manually set and auto-calc is just being turned off.
+                    // However, the current UI doesn't really differentiate "manually set" from "auto-calculated".
+                    // For simplicity, if auto-calc is off, we assume they will be handled manually or are not needed.
+                    // Let's keep their existing times unless PI/PF changes, then they'd be recalculated if auto-calc is on.
+                    // The current behavior is to nullify them if auto-calc is on and PI/PF are incomplete.
+                    // If auto-calc is turned OFF, we should probably preserve existing times.
+                    // Let's change this: if auto-calc is turned off, do nothing to existing times here.
+                    // They can be edited manually.
                 });
-                updateStopsList(); return;
+                // updateStopsList(); // No, only update if times actually change.
+                return;
             }
 
             const startPoint = routePoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
@@ -745,13 +775,14 @@
 
             if (!startPoint || !endPoint || !startPoint.schedule || !endPoint.schedule ||
                 !startPoint.schedule.scheduledTime || !endPoint.schedule.scheduledTime) {
+                // If PI/PF or their times are not set, clear intermediate times.
                 routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => stop.scheduledTime = null);
                 updateStopsList(); return;
             }
             const legStartTime = new Date(startPoint.schedule.scheduledTime);
             const legEndTime = new Date(endPoint.schedule.scheduledTime);
 
-            const pathForCalc = getPathPointsForPolyline();
+            const pathForCalc = getPathPointsForPolyline(); // This path is between defined PI and PF
             distributeTimesProportionally(pathForCalc, legStartTime, legEndTime);
             updateStopsList();
         }
@@ -763,10 +794,11 @@
             const legEndMillis = legEndTimeDate.getTime();
             const totalDurationMillis = legEndMillis - legStartMillis;
 
-            const intermediateStopsInLeg = legPathPoints.slice(1, -1)
+            // Filter for actual intermediate stops within this specific leg (between PI and PF)
+            const intermediateStopsInLeg = legPathPoints.slice(1, -1) // Exclude start and end of the leg itself
                 .filter(p => p.pointCategory === 'intermediateStop');
 
-            if (totalDurationMillis <= 0) {
+            if (totalDurationMillis <= 0) { // If duration is zero or negative, set all intermediate stops to leg start time.
                 intermediateStopsInLeg.forEach(p_leg => {
                     const pointInMainRoute = routePoints.find(rp => rp.id === p_leg.id);
                     if(pointInMainRoute) pointInMainRoute.scheduledTime = new Date(legStartMillis);
@@ -781,8 +813,8 @@
                 segmentDistances.push(dist); totalDistance += dist;
             }
 
-            if (totalDistance < 1.0) {
-                const numTimeSegments = intermediateStopsInLeg.length + 1;
+            if (totalDistance < 1.0) { // Minimal or zero distance, distribute time evenly.
+                const numTimeSegments = intermediateStopsInLeg.length + 1; // Number of segments between schedulable points
                 if (numTimeSegments <= 0) return;
                 const timePerSegment = totalDurationMillis / numTimeSegments;
                 let currentTime = legStartMillis;
@@ -792,11 +824,14 @@
                     const pointInMainRoute = routePoints.find(rp => rp.id === intermediateStopsInLeg[i].id);
                     if (pointInMainRoute) pointInMainRoute.scheduledTime = new Date(currentTime);
                 }
-            } else {
+            } else { // Distribute time based on proportional distance.
                 let accumulatedDistance = 0;
-                for (let i = 0; i < legPathPoints.length - 1; i++) {
+                // Iterate through all points in the leg to calculate accumulated distance up to each point
+                for (let i = 0; i < legPathPoints.length - 1; i++) { // up to second to last point
                     accumulatedDistance += segmentDistances[i];
-                    const nextPointInPath = legPathPoints[i+1];
+                    const nextPointInPath = legPathPoints[i+1]; // This is the point we might be setting time for
+                    
+                    // Only set time for intermediate stops
                     if (nextPointInPath.pointCategory === 'intermediateStop') {
                         const proportionOfRoute = accumulatedDistance / totalDistance;
                         const timeOffsetMillis = totalDurationMillis * proportionOfRoute;
@@ -837,6 +872,7 @@
         }
 
         function getSortedRoutePointsForDisplay() {
+            // Returns points that are Line Endpoints or Intermediate Stops, sorted by originalIndex
             return [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex)
                                   .filter(p => p.pointCategory !== 'waypoint');
         }
@@ -852,13 +888,13 @@
 
         function updateStopsList() {
             const listDiv = document.getElementById('stopsList');
-            const displayPoints = getSortedRoutePointsForDisplay();
+            const displayPoints = getSortedRoutePointsForDisplay(); // Gets PI, PF, and Intermediate Stops
 
             if (displayPoints.length === 0) { listDiv.innerHTML = "No hay puntos definidos."; return; }
 
             let html = "<ul style='padding-left: 10px; list-style: none;'>";
-            let intermediateVisualCounter = 1;
-            let overallCounter = 1;
+            let intermediateVisualCounter = 1; // For numbering intermediate stops 1, 2, 3...
+            let overallCounter = 1; // For numbering all listed points 1, 2, 3...
 
             displayPoints.forEach((p) => {
                 let typeText = "", timeStr = "N/A";
@@ -872,9 +908,11 @@
                         timeStr = `${p.isStartPoint ? 'Salida' : 'Llegada'}: ${formatTime(p.schedule.scheduledTime, true)}`;
                     } else timeStr = "Horario no definido";
                 } else if (p.pointCategory === 'intermediateStop') {
-                    typeText = `Inter. ${intermediateVisualCounter++}`;
+                    typeText = `Inter. ${intermediateVisualCounter++}`; // Use separate counter for "Stop 1, Stop 2"
                     timeStr = `Prog: ${formatTime(p.scheduledTime, true)}`;
                 }
+                // Waypoints are not included in displayPoints from getSortedRoutePointsForDisplay()
+
                 html += `<li class="${itemClass}" onclick="focusPointOnMap('${p.id}')">${prefix}<b>${p.name}</b> (${typeText}) - ${timeStr}</li>`;
             });
             html += "</ul>";
@@ -967,14 +1005,15 @@
                         fillColor: circleColor, fillOpacity: 0.2
                     }).addTo(map);
                     p.marker.on('click', function(ev) {L.DomEvent.stopPropagation(ev); if(isTracking)return; activateEditModeForPoint(p); });
-                 } else {
+                 } else { // Waypoint
                     p.marker.on('click', function(ev) {
                         L.DomEvent.stopPropagation(ev); if (isTracking) return;
                         if (activePointCreationMode === 'waypoint') {
                             if (confirm(`¿Borrar este punto de paso "${p.name}"?`)) {
                                 map.removeLayer(p.marker);
                                 routePoints = routePoints.filter(rp => rp.id !== p.id);
-                                routePoints.forEach((rp, idx) => rp.originalIndex = idx);
+                                // Re-index originalIndex for consistency if needed, though for waypoints it's less critical than for ordered stops
+                                routePoints.forEach((rp, idx) => rp.originalIndex = idx); // Simple re-index
                                 redrawRouteLine();
                                 if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes();
                             }
@@ -992,7 +1031,7 @@
             });
 
             updateAllMarkerIconsAndLabels();
-            updateWaypointMarkersVisibility(false);
+            updateWaypointMarkersVisibility(false); // Hide waypoints by default on load
             redrawRouteLine(); updateStopsList();
             const boundsPoints = routePoints.filter(p => p.pointCategory !== 'waypoint');
             if (boundsPoints.length > 0) {
@@ -1055,7 +1094,7 @@
 
         function setupCurrentLegForTracking() {
             trackingState.activeLegPoints = [];
-            const legPathPointsSource = getPathPointsForPolyline();
+            const legPathPointsSource = getPathPointsForPolyline(); // This gives points from PI to PF
             if(legPathPointsSource.length === 0) { console.error("No points found for current leg in tracking."); return false; }
 
             const startPoint = routePoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
@@ -1073,9 +1112,10 @@
                 alert(`Horarios de Punto Inicio/Final incompletos para la ruta.`); return false;
             }
 
+            // Map points from the PI-PF path to include their effective scheduled times
             trackingState.activeLegPoints = legPathPointsSource.map(legPoint => {
-                const originalPoint = routePoints.find(rp => rp.id === legPoint.id);
-                if (!originalPoint) return { ...legPoint, effectiveScheduledTime: null };
+                const originalPoint = routePoints.find(rp => rp.id === legPoint.id); // Find the full point data
+                if (!originalPoint) return { ...legPoint, effectiveScheduledTime: null }; // Should not happen if legPathPointsSource is from routePoints
 
                 let effTime = null;
                 if (originalPoint.pointCategory === 'lineEndpoint') {
@@ -1085,16 +1125,20 @@
                     // Use the globally set scheduledTime, which should have been calculated based on this route's PI/PF
                     effTime = originalPoint.scheduledTime ? new Date(originalPoint.scheduledTime) : null;
                 }
+                // Waypoints don't have effectiveScheduledTime for deviation calculation purposes
                 return {
-                    ...originalPoint,
+                    ...originalPoint, // Include all original properties like lat, lng, name, pointCategory
                     effectiveScheduledTime: effTime
                 };
             });
 
+             // Validate that the effective start and end points of the leg have times
              if (trackingState.activeLegPoints.length > 0 &&
-                (!trackingState.activeLegPoints[0].effectiveScheduledTime ||
-                 !trackingState.activeLegPoints[trackingState.activeLegPoints.length -1].effectiveScheduledTime) ) {
-                 alert(`Horarios incompletos para los extremos de la ruta.`);
+                (!trackingState.activeLegPoints[0].effectiveScheduledTime || // First point of the leg (should be PI)
+                 !trackingState.activeLegPoints[trackingState.activeLegPoints.length -1].effectiveScheduledTime) ) { // Last point of the leg (should be PF)
+                 // This check might be redundant if routeStartTime/routeEndTime already validated
+                 console.error("Effective times for leg start/end points are missing after setup.", trackingState.activeLegPoints);
+                 alert(`Horarios incompletos para los extremos de la ruta tras la configuración.`);
                  return false;
             }
             return true;
@@ -1112,11 +1156,16 @@
             if (!routeStartTime || !routeEndTime) {
                 alert(`Horarios incompletos para Punto Inicio/Final. No se puede iniciar seguimiento.`); return;
             }
+            // Recalculate intermediate times just in case, if auto-calc is on and PI/PF were just set.
+            if (document.getElementById('autoCalcTimes').checked) {
+                calculateAndApplyAllIntermediateTimes();
+            }
+
 
             isTracking = true;
             currentRouteNameForTracking = document.getElementById('routeName').value || "Ruta Actual";
 
-            if (!setupCurrentLegForTracking()) {
+            if (!setupCurrentLegForTracking()) { // This now populates trackingState.activeLegPoints with PI to PF path
                 stopTracking(false, "Error configurando ruta inicial.");
                 return;
             }
@@ -1125,8 +1174,8 @@
             document.getElementById('stopTrackingBtn').style.display = 'inline-block';
             document.getElementById('routeCreationSection').style.display = 'none';
             updateTrackingStatusDisplay();
-            redrawRouteLine();
-            updateWaypointMarkersVisibility(false);
+            redrawRouteLine(); // Redraws with tracking line style
+            updateWaypointMarkersVisibility(false); // Hide waypoints during tracking
 
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
@@ -1138,13 +1187,41 @@
                         else userMarker = L.marker([latitude, longitude], { icon: createUserLocationIcon() }).addTo(map);
                         map.setView([latitude, longitude], 16);
 
+                        // Determine initial segment based on proximity to points in activeLegPoints
                         if (trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0) {
                             let closestPointIndex = 0; let minDistance = Infinity;
                             trackingState.activeLegPoints.forEach((point, index) => {
                                 const distance = L.latLng(latitude, longitude).distanceTo(L.latLng(point.lat, point.lng));
                                 if (distance < minDistance) { minDistance = distance; closestPointIndex = index; }
                             });
-                            currentSegmentStartIndex = closestPointIndex;
+                            // Start tracking from the segment leading *to* this closest point, or *from* it if it's the start.
+                            // If closestPointIndex is 0 (start point), currentSegmentStartIndex should be 0.
+                            // If closestPointIndex is > 0, currentSegmentStartIndex is effectively the index of the point *before* it in the segment.
+                            // However, currentSegmentStartIndex usually means "the point we just left or are at".
+                            // Let's simplify: if we are closer to point X, we are considered to be on the segment ending at X.
+                            // So, if closest is point index `i`, we're on segment `i-1` to `i`.
+                            // `currentSegmentStartIndex` should be `i` if we mean "currently at or heading towards next".
+                            // The logic in handlePositionUpdate and calculateTimeDeviation expects currentSegmentStartIndex
+                            // to be the index of the *start* of the current segment the user is on.
+                            // If user is closest to point `k`, they are either on segment `k-1` to `k` or `k` to `k+1`.
+                            // For simplicity, let's set it to the closest point and let deviation logic figure it out.
+                            // Or, more robustly, find the closest segment.
+                            // For now, `closestPointIndex` is the index in `activeLegPoints`.
+                            // If `closestPointIndex` is the index of the first point (0), `currentSegmentStartIndex` is 0.
+                            // If `closestPointIndex` is `k > 0`, it implies we are likely on segment `k-1` to `k`.
+                            // So `currentSegmentStartIndex` could be `k-1`.
+                            // Let's stick to: `currentSegmentStartIndex` is the index of the last passed/current major point.
+                            // If we're closest to point `k`, and it's not the start, we assume we've passed `k-1`.
+                            // So, `currentSegmentStartIndex` could be `closestPointIndex -1` (if >0), or 0.
+                            // This might need refinement, but the deviation calculation itself looks for surrounding scheduled points.
+                             currentSegmentStartIndex = Math.max(0, closestPointIndex -1); // Tentative, might need to be smarter
+                             // Let's revert to a simpler model: if closest to point `k`, we are considered at start of segment `k` to `k+1`.
+                             currentSegmentStartIndex = closestPointIndex;
+                             if (currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 && trackingState.activeLegPoints.length > 1) {
+                                 currentSegmentStartIndex = trackingState.activeLegPoints.length - 2; // Ensure it's a valid start of a segment
+                             }
+
+
                         } else currentSegmentStartIndex = 0;
 
                         trackingIntervalId = navigator.geolocation.watchPosition(
@@ -1155,7 +1232,7 @@
                     },
                     initialPositionError => {
                         console.warn("No se pudo obtener la posición inicial:", initialPositionError.message);
-                        currentSegmentStartIndex = 0;
+                        currentSegmentStartIndex = 0; // Default to start of the route
                         if (trackingState.activeLegPoints.length > 0 && trackingState.activeLegPoints[0]) {
                             map.setView([trackingState.activeLegPoints[0].lat, trackingState.activeLegPoints[0].lng], 16);
                         }
@@ -1174,7 +1251,7 @@
         }
 
         function finalizeTrackingStart() {
-            if (!isTracking) return;
+            if (!isTracking) return; // Guard against race conditions if stopTracking was called
             if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition);
             else {
                  document.getElementById('timeDeviation').textContent = "Calculando...";
@@ -1192,8 +1269,9 @@
             document.getElementById('routeCreationSection').style.display = 'block';
             if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
 
-            redrawRouteLine();
-            updateStopsList(); currentSegmentStartIndex = 0;
+            redrawRouteLine(); // Redraws with edit line style
+            updateStopsList(); // Clears next stop highlight if any specific to tracking
+            currentSegmentStartIndex = 0; // Reset segment index
             updateManualNavButtons(); setActiveMode(null); updateWaypointMarkersVisibility(false);
             currentRouteNameForTracking = ""; // Clear route name
             updateTrackingStatusDisplay(); // Update to remove route name
@@ -1203,7 +1281,7 @@
                 alert("Ruta completada!"); checkRouteQueue();
             } else {
                 const msg = "Seguimiento detenido." + (reason ? " Razón: " + reason : "");
-                console.log(msg); if (reason && reason.startsWith("Error")) alert(msg);
+                console.log(msg); if (reason && reason.startsWith("Error")) alert(msg); // Only alert actual errors
                 document.getElementById('trackingInfoDisplay').textContent = "SEGUIMIENTO DETENIDO";
             }
              document.getElementById('timeDeviation').textContent = "00:00";
@@ -1239,12 +1317,16 @@
             const manualNav = document.getElementById('manualStopNav').checked;
 
             if (!manualNav) {
-                if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) {
-                    handleEndOfRoute(); // Renamed from handleEndOfLeg
-                    if (!isTracking) return;
+                // Automatic progression: Check if user has reached the "next relevant target point"
+                // A "relevant target point" is any point that is NOT a waypoint.
+                if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) { // Already at or past the last point of the leg
+                    handleEndOfRoute();
+                    if (!isTracking) return; // handleEndOfRoute might stop tracking
                 } else {
                     let nextRelevantTargetPoint = null;
                     let nextRelevantTargetIndex = -1;
+
+                    // Find the next non-waypoint point in the activeLegPoints from currentSegmentStartIndex + 1
                     for (let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++) {
                         if (trackingState.activeLegPoints[i].pointCategory !== 'waypoint') {
                             nextRelevantTargetPoint = trackingState.activeLegPoints[i];
@@ -1252,19 +1334,22 @@
                             break;
                         }
                     }
-                    if (!nextRelevantTargetPoint) {
+                    // If no non-waypoint found, the only remaining target is the very last point of the leg (if it's not a waypoint itself, or if it is)
+                    if (!nextRelevantTargetPoint && trackingState.activeLegPoints.length > 0) {
+                         // The implicit target is the end of the leg if all intermediate are waypoints or passed
                         if (currentSegmentStartIndex < trackingState.activeLegPoints.length - 1) {
-                           nextRelevantTargetPoint = trackingState.activeLegPoints[trackingState.activeLegPoints.length - 1];
+                           nextRelevantTargetPoint = trackingState.activeLegPoints[trackingState.activeLegPoints.length - 1]; // The end point of the leg
                            nextRelevantTargetIndex = trackingState.activeLegPoints.length - 1;
                         }
                     }
 
+
                     if (nextRelevantTargetPoint) {
                         const distanceToTarget = L.latLng(latitude, longitude).distanceTo(L.latLng(nextRelevantTargetPoint.lat, nextRelevantTargetPoint.lng));
                         if (distanceToTarget < currentStopRadius) {
-                            currentSegmentStartIndex = nextRelevantTargetIndex;
-                            if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) {
-                                handleEndOfRoute(); // Renamed from handleEndOfLeg
+                            currentSegmentStartIndex = nextRelevantTargetIndex; // Advance to this reached point
+                            if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) { // Check if this was the last point
+                                handleEndOfRoute();
                                 if (!isTracking) return;
                             }
                         }
@@ -1272,26 +1357,29 @@
                 }
             }
 
-            if (isTracking) {
+            if (isTracking) { // Check again as handleEndOfRoute might have changed it
                 calculateTimeDeviation(position);
                 highlightNextStopInList();
                 updateManualNavButtons();
             }
         }
 
-        function advanceToNextActivePoint() {
+        function advanceToNextActivePoint() { // Used by manual navigation
             if (currentSegmentStartIndex < trackingState.activeLegPoints.length - 1) {
                 currentSegmentStartIndex++;
+                // If the new currentSegmentStartIndex points to a waypoint, and there's a non-waypoint after it,
+                // potentially skip to the next non-waypoint for display/logic unless strict point-by-point is needed.
+                // For now, simple increment.
             }
-            if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1 ) {
-                handleEndOfRoute(); // Renamed from handleEndOfLeg
+            if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1 ) { // Reached or passed last point
+                handleEndOfRoute();
             }
         }
 
-        function handleEndOfRoute() { // Renamed from handleEndOfLeg
+        function handleEndOfRoute() {
             if (!isTracking) return;
-            // No more turns to advance to. The route is simply completed.
-            stopTracking(true); // All turns completed (effectively, the single "turn"/route is done)
+            // For unidirectional simple, end of route means the single leg is completed.
+            stopTracking(true); // True for completedNaturally
         }
 
         function goToPreviousActivePoint() {
@@ -1304,8 +1392,8 @@
 
         function goToNextActivePoint() {
             if (!isTracking || !trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) return;
-            advanceToNextActivePoint();
-            if (isTracking) {
+            advanceToNextActivePoint(); // This handles logic for end of route too
+            if (isTracking) { // Check if still tracking (advanceToNextActivePoint might call stopTracking via handleEndOfRoute)
                  if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition);
                  highlightNextStopInList();
                  updateManualNavButtons();
@@ -1318,34 +1406,39 @@
 
             if (isTracking && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0) {
                 let displayableNextTarget = null;
+                // Find the next point in activeLegPoints that is NOT a waypoint, starting from currentSegmentStartIndex + 1
                 for (let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++) {
                     if (trackingState.activeLegPoints[i].pointCategory !== 'waypoint') {
                         displayableNextTarget = trackingState.activeLegPoints[i];
                         break;
                     }
                 }
+                 // If all subsequent points are waypoints, or no subsequent points, the "next stop" is effectively the end of the route.
                  if (!displayableNextTarget && currentSegmentStartIndex < trackingState.activeLegPoints.length -1 ) {
+                    // This means remaining points are waypoints, so target the actual end point of the leg for display
                     displayableNextTarget = trackingState.activeLegPoints[trackingState.activeLegPoints.length -1];
                 }
 
+
                 if (displayableNextTarget) {
                     nextStopName = displayableNextTarget.name;
-                    const listPoints = getSortedRoutePointsForDisplay();
+                    // Find this displayableNextTarget in the main `stopsList` (which only contains non-waypoints)
+                    const listPoints = getSortedRoutePointsForDisplay(); // These are already sorted and filtered
                     const displayIndexInList = listPoints.findIndex(dp => dp.id === displayableNextTarget.id);
+
                     if (displayIndexInList !== -1 && document.querySelectorAll('#stopsList .stop-item')[displayIndexInList]) {
                         document.querySelectorAll('#stopsList .stop-item')[displayIndexInList].classList.add('next-stop-highlight');
                     }
-                } else if (currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) {
+                } else if (currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) { // At or past the last point
                      nextStopName = "Fin de Ruta";
-                } else {
+                } else { // Should be covered by above, but as a fallback
                      nextStopName = "Fin de Ruta";
                 }
-            } else if (!isTracking) {
+            } else if (!isTracking) { // Not tracking, show first stop of the route as "next"
                 const displayPoints = getSortedRoutePointsForDisplay();
-                if (displayPoints.length > 0 && displayPoints[0].pointCategory !== 'waypoint') {
+                if (displayPoints.length > 0) { // First point in the list (already filtered for non-waypoints)
                      nextStopName = displayPoints[0].name;
-                } else if (displayPoints.length > 0) {
-                     nextStopName = displayPoints[0].name + " (Paso)";
+                     // Optionally highlight it if desired, but current logic only highlights during tracking.
                 }
             }
             document.getElementById('nextStopDisplay').textContent = `Próxima: ${nextStopName}`;
@@ -1359,43 +1452,63 @@
             }
 
             const currentTime = new Date().getTime();
-            const legPoints = trackingState.activeLegPoints;
-            let pointA = null, pointALegIndex = -1, pointB = null;
+            const legPoints = trackingState.activeLegPoints; // These are already filtered for the current PI-PF leg and have .effectiveScheduledTime
+            let pointA = null, pointB = null; // pointALegIndex is not strictly needed for this revised logic.
 
+            // Find pointA: the last schedulable (non-waypoint with time) point at or before currentSegmentStartIndex
             for (let i = currentSegmentStartIndex; i >= 0; i--) {
                 if (legPoints[i].pointCategory !== 'waypoint' && legPoints[i].effectiveScheduledTime) {
-                    pointA = legPoints[i]; pointALegIndex = i; break;
+                    pointA = legPoints[i];
+                    break;
                 }
             }
-            if (!pointA && legPoints[0].effectiveScheduledTime) { pointA = legPoints[0]; pointALegIndex = 0; }
+            // If no such pointA found going backwards, and the very first point of the leg is schedulable, use it.
+            if (!pointA && legPoints[0] && legPoints[0].pointCategory !== 'waypoint' && legPoints[0].effectiveScheduledTime) {
+                pointA = legPoints[0];
+            }
 
+            // Find pointB: the next schedulable (non-waypoint with time) point after currentSegmentStartIndex
             for (let i = currentSegmentStartIndex + 1; i < legPoints.length; i++) {
                 if (legPoints[i].pointCategory !== 'waypoint' && legPoints[i].effectiveScheduledTime) {
-                    pointB = legPoints[i]; break;
+                    pointB = legPoints[i];
+                    break;
                 }
             }
-            if (!pointB && legPoints[legPoints.length - 1].effectiveScheduledTime) {
-                if (!pointA || pointA.id !== legPoints[legPoints.length - 1].id) {
+            // If no such pointB found going forwards, and the very last point of the leg is schedulable (and different from pointA), use it.
+            if (!pointB && legPoints[legPoints.length - 1] &&
+                legPoints[legPoints.length - 1].pointCategory !== 'waypoint' &&
+                legPoints[legPoints.length - 1].effectiveScheduledTime) {
+                if (!pointA || pointA.id !== legPoints[legPoints.length - 1].id) { // Ensure pointB is different from pointA
                      pointB = legPoints[legPoints.length - 1];
                 }
             }
 
-            if (pointALegIndex === 0 && currentSegmentStartIndex === 0 && pointA && pointA.effectiveScheduledTime) {
-                const legStartTime = new Date(pointA.effectiveScheduledTime).getTime();
-                if (currentTime < legStartTime) { displayDeviation(legStartTime - currentTime); return; }
-            }
+            // *** MODIFICATION START: Removed the early exit block ***
+            // The following block was removed to ensure deviation is calculated based on position even if before scheduled start:
+            // if (pointALegIndex === 0 && currentSegmentStartIndex === 0 && pointA && pointA.effectiveScheduledTime) {
+            //     const legStartTime = new Date(pointA.effectiveScheduledTime).getTime();
+            //     if (currentTime < legStartTime) { displayDeviation(legStartTime - currentTime); return; }
+            // }
+            // *** MODIFICATION END ***
 
             if (!pointA || !pointB) {
+                // This case means we are likely before the first schedulable point or after the last one,
+                // or the route is too short/ill-defined for a segment.
+                // If only pointA is available (e.g., at the start or after the end of a single-point "segment"),
+                // calculate deviation relative to that single point's time.
                 if (pointA && pointA.effectiveScheduledTime) {
                     displayDeviation(new Date(pointA.effectiveScheduledTime).getTime() - currentTime);
-                } else {
+                } else if (pointB && pointB.effectiveScheduledTime) { // Should ideally not happen if pointA logic is robust
+                    displayDeviation(new Date(pointB.effectiveScheduledTime).getTime() - currentTime);
+                }
+                else {
                     document.getElementById('timeDeviation').textContent = "---";
                     document.getElementById('timeDeviation').style.color = "#FFFFFF";
                 }
                 return;
             }
 
-            if (pointA.id === pointB.id) {
+            if (pointA.id === pointB.id) { // Should only happen if pointA is the only schedulable point or we are past the route
                 displayDeviation(new Date(pointA.effectiveScheduledTime).getTime() - currentTime); return;
             }
 
@@ -1403,8 +1516,9 @@
             const timeB = new Date(pointB.effectiveScheduledTime).getTime();
             const segmentTotalScheduledMillis = timeB - timeA;
 
-            if (segmentTotalScheduledMillis < 0) { displayDeviation(timeB - currentTime); return; }
-            if (segmentTotalScheduledMillis === 0) { displayDeviation(timeA - currentTime); return; }
+            // If scheduled times are inverted or same, deviation is relative to timeB (or timeA).
+            if (segmentTotalScheduledMillis < 0) { displayDeviation(timeB - currentTime); return; } // Earlier arrival at B than A implies data issue or specific scenario
+            if (segmentTotalScheduledMillis === 0) { displayDeviation(timeA - currentTime); return; } // A and B scheduled at same time
 
             const latLngA = L.latLng(pointA.lat, pointA.lng);
             const latLngB = L.latLng(pointB.lat, pointB.lng);
@@ -1412,11 +1526,23 @@
             const distanceTotalSegment = latLngA.distanceTo(latLngB);
             let progressPercentage;
 
-            if (distanceTotalSegment < 1.0) { progressPercentage = 0.0; }
+            if (distanceTotalSegment < 1.0) { // Segment too short, assume 0% progress if at A, or 100% if closer to B (or handle as single point)
+                // Simplified: if effectively at point A, progress is 0.
+                // More accurately, if user is past midpoint, progress is 1, else 0.
+                // Or, calculate deviation to pointA if closer to A, to pointB if closer to B.
+                // For now, let's use 0 progress if segment is negligible, deviation will be against timeA.
+                progressPercentage = 0.0;
+            }
             else {
+                // Project user's current location onto the segment AB
                 const distUserToA = currentUserLatLng.distanceTo(latLngA);
                 const distUserToB = currentUserLatLng.distanceTo(latLngB);
+
+                // Using Law of Cosines to find projection. d_AB^2 + d_UA^2 - d_UB^2 / (2 * d_AB)
+                // This gives distance from A along the line AB to the projection point.
                 let distanceAlongSegmentUser = (Math.pow(distanceTotalSegment, 2) + Math.pow(distUserToA, 2) - Math.pow(distUserToB, 2)) / (2 * distanceTotalSegment);
+                
+                // Clamp the projected distance to be within the segment [0, distanceTotalSegment]
                 distanceAlongSegmentUser = Math.max(0, Math.min(distanceAlongSegmentUser, distanceTotalSegment));
                 progressPercentage = distanceAlongSegmentUser / distanceTotalSegment;
             }
@@ -1431,14 +1557,17 @@
             const totalSecondsValue = Math.floor(absMillis / 1000);
             const displaySeconds = totalSecondsValue % 60;
             const totalMinutesValue = Math.floor(totalSecondsValue / 60);
-            const sign = deviationMillis >= 0 ? "+" : "-";
+            const sign = deviationMillis >= 0 ? "+" : "-"; // Positive: ahead of schedule (expected time is later than current time)
+                                                        // Negative: behind schedule (expected time is earlier than current time)
             const formattedDeviation = `${sign}${String(totalMinutesValue).padStart(2, '0')}:${String(displaySeconds).padStart(2, '0')}`;
             const deviationDiv = document.getElementById('timeDeviation');
             deviationDiv.textContent = formattedDeviation;
 
-            if (deviationMillis > 59999) deviationDiv.style.color = "#00FF00";
-            else if (deviationMillis < -59999) deviationDiv.style.color = "#FF0000";
-            else deviationDiv.style.color = "#FFFFFF";
+            // Adelantado (positive deviation): Green
+            // Atrasado (negative deviation): Red
+            if (deviationMillis > 59999) deviationDiv.style.color = "#00FF00"; // More than 1 min ahead
+            else if (deviationMillis < -59999) deviationDiv.style.color = "#FF0000"; // More than 1 min behind
+            else deviationDiv.style.color = "#FFFFFF"; // Within +/- 1 min
         }
         function handleGeolocationError(error) {
             console.error("Error de geolocalización: ", error);
@@ -1471,13 +1600,13 @@
                     const savedRoutesSelect = document.getElementById('savedRoutes');
                     let routeExists = Array.from(savedRoutesSelect.options).some(opt => opt.value === nextRouteName);
                     if (routeExists) {
-                        savedRoutesSelect.value = nextRouteName; loadRoute();
-                        setTimeout(() => {
+                        savedRoutesSelect.value = nextRouteName; loadRoute(); // This sets currentRouteNameForTracking
+                        setTimeout(() => { // Allow loadRoute to fully process
                             const startPoint = routePoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
                             const endPoint = routePoints.find(p => p.pointCategory === 'lineEndpoint' && !p.isStartPoint);
                             let canStart = startPoint && endPoint && getEndpointScheduledTime(startPoint) && getEndpointScheduledTime(endPoint);
 
-                            if (canStart) startTracking();
+                            if (canStart) startTracking(); // startTracking will use currentRouteNameForTracking
                             else alert(`Error al cargar la ruta "${nextRouteName}" de la cola o sus horarios son inválidos.`);
                         }, 500);
                     } else alert(`La ruta "${nextRouteName}" de la cola ya no existe.`);
