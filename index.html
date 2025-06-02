@@ -200,17 +200,16 @@
         <div class="control-section" id="routeCreationSection">
             <h3>Crear/Modificar Ruta</h3>
             <p style="font-size: 0.8em;">
-                Utiliza los botones de modo para gestionar la ruta. Para añadir puntos (Paso, Parada, Punta de Línea), activa el modo correspondiente y luego toca el mapa.
-                Para editar un punto existente, tócalo directamente en el mapa. El modo "Editar Horarios" prioriza la edición de tiempos al seleccionar un punto.
-                Usa "Vista Trazado" para cambiar entre la visualización de la bandera IDA (azul) y VUELTA (roja).
+                Toca el mapa para añadir Puntos de Paso, Paradas Intermedias (para la bandera activa seleccionada abajo) o Puntas de Línea (máx. 2).
+                Toca un punto existente para editarlo. Ambas trazas (IDA y VUELTA) se muestran simultáneamente.
             </p>
             <div id="editModeSelection" style="margin-bottom:10px; display: flex; flex-wrap: wrap;">
-                <button onclick="setActiveMode('flagConfig')" id="modeFlagConfigBtn" class="secondary" style="margin-right:5px; margin-bottom:5px;">Editar Bandera</button>
+                <button onclick="setActiveMode('flagConfig')" id="modeFlagConfigBtn" class="secondary" style="margin-right:5px; margin-bottom:5px;">Editar Info Bandera</button>
                 <button onclick="setActiveMode('waypoint')" id="modeWaypointBtn" class="info" style="margin-right:5px; margin-bottom:5px;">+Pto. Paso</button>
                 <button onclick="setActiveMode('intermediateStop')" id="modeIntermediateStopBtn" class="info" style="margin-right:5px; margin-bottom:5px;">+Parada Inter.</button>
                 <button onclick="setActiveMode('lineEndpoint')" id="modeLineEndpointBtn" class="info" style="margin-right:5px; margin-bottom:5px;">+Punta Línea</button>
                 <button onclick="setActiveMode('schedule')" id="modeScheduleBtn" class="secondary" style="margin-right:5px; margin-bottom:5px;">Editar Horarios</button>
-                <button onclick="toggleEditingFlagView()" id="toggleEditingFlagViewBtn" class="secondary" style="margin-right:5px; margin-bottom:5px;">Vista Trazado: IDA</button>
+                <button onclick="toggleEditingFlagView()" id="toggleEditingFlagViewBtn" class="secondary" style="margin-right:5px; margin-bottom:5px;">Bandera Activa (Edición): IDA</button>
                 <button onclick="setActiveMode(null)" id="modeCancelBtn" class="danger" style="display:none; margin-bottom:5px;">X Cancelar Modo</button>
             </div>
             <p id="activeModeStatus" style="font-size: 0.8em; color: #17a2b8; margin-top:0; min-height: 1.2em;"></p>
@@ -226,13 +225,11 @@
                 <b>P2 (Segunda Punta de Línea):</b> Para cada vuelta, la "Llegada" es el fin de la bandera IDA y la "Salida" es el inicio de la bandera VUELTA.
             </small>
 
-            <div id="intermediateStopTime" style="display:none;">
-                <label for="pointScheduledTimeIntermediateIDA">Horario Programado (Parada Intermedia en IDA):</label>
-                <input type="datetime-local" id="pointScheduledTimeIntermediateIDA">
-                <label for="pointScheduledTimeIntermediateVUELTA">Horario Programado (Parada Intermedia en VUELTA):</label>
-                <input type="datetime-local" id="pointScheduledTimeIntermediateVUELTA">
+            <div id="intermediateStopTimeContainer" style="display:none;">
+                <label for="pointScheduledTimeIntermediate" id="intermediateTimeLabel">Horario Programado:</label>
+                <input type="datetime-local" id="pointScheduledTimeIntermediate">
                 <small style="font-size: 0.7em; display: block; margin-bottom: 5px; color: #ccc;">
-                    Estos horarios para paradas intermedias se pueden calcular automáticamente usando la opción "Calcular horarios intermedios" (basado en la Vuelta 1 de las Puntas de Línea).
+                    Este horario es específico para la bandera activa durante la creación de la parada. Se puede calcular automáticamente usando la opción "Calcular horarios intermedios".
                 </small>
             </div>
 
@@ -283,6 +280,10 @@
 
         <div class="control-section">
             <h3>Seguimiento</h3>
+            <label for="startTrackingFlag">Iniciar Bandera:</label>
+            <select id="startTrackingFlag">
+                {/* Options will be populated by JS */}
+            </select>
             <button id="startTrackingBtn" onclick="startTracking()">Iniciar Seguimiento</button>
             <button id="stopTrackingBtn" onclick="stopTracking()" class="danger" style="display:none;">Detener Seguimiento</button>
             <br>
@@ -308,7 +309,8 @@
         'use strict';
         let map;
         let routePoints = []; 
-        let routeLine;
+        let routeLineIda, routeLineVuelta; // For editing view
+        let trackingRouteLine; // For tracking view
         let userMarker;
         let trackingIntervalId;
         let isTracking = false;
@@ -329,7 +331,9 @@
             flagNameVuelta: "VUELTA"
         };
         
-        let currentEditingFlagView = routeSettings.flagNameIda; // For route creation polyline view
+        // This determines which flag is "active" for adding new Intermediate Stops
+        // and for some UI cues during editing. Both IDA and VUELTA lines are always visible in edit mode.
+        let currentEditingFlagView = routeSettings.flagNameIda; 
 
         let trackingState = {
             currentTurn: 1,
@@ -341,11 +345,16 @@
             return Date.now().toString(36) + Math.random().toString(36).substring(2);
         }
         
-        function createDivIcon(text, pointCategory = '', isFirstEndpoint = false) {
+        function createDivIcon(text, pointCategory = '', isFirstEndpoint = false, flagAffinity = null) {
             let htmlContent = '';
             let iconSize = [30,30]; 
             let iconAnchor = [15,15]; 
             let className = 'leaflet-div-icon';
+            let flagColor = null;
+
+            if (pointCategory === 'intermediateStop' && flagAffinity) {
+                flagColor = (flagAffinity === routeSettings.flagNameIda) ? 'blue' : 'red';
+            }
 
             if (pointCategory === 'waypoint') {
                 className += ' waypoint-marker-icon'; 
@@ -358,7 +367,7 @@
                 iconSize = [32,32]; 
                 iconAnchor = [16,16];
             } else { // intermediateStop
-                const bgColor = '#2196F3'; 
+                const bgColor = flagColor || '#2196F3'; // Default blue if no flag affinity (should not happen for intermediate)
                 const displayText = text || '?';
                 htmlContent = `<div style="background-color:${bgColor}; padding: 5px 8px; border-radius: 5px; color: white; font-size:12px; font-weight:bold; border: 1px solid white; min-width: 15px; text-align: center;">${displayText}</div>`;
                 iconSize = [displayText.length > 1 ? 35 : 30, 30]; 
@@ -393,7 +402,7 @@
                 });
             }
             document.getElementById('stopRadiusInput').value = currentStopRadius;
-            updateRouteSettings(); 
+            updateRouteSettings(); // Also populates flag selectors
         }
 
         function setActiveMode(modeName) {
@@ -428,7 +437,7 @@
 
             switch (modeName) {
                 case 'flagConfig':
-                    statusP.textContent = "Modo Edición de Bandera: Configure vueltas y nombres de bandera en su sección.";
+                    statusP.textContent = "Modo Edición Info de Bandera: Configure vueltas y nombres de bandera en su sección.";
                     document.getElementById('routeSettingsSection')?.scrollIntoView({ behavior: 'smooth' });
                     updateWaypointMarkersVisibility(false);
                     break;
@@ -439,7 +448,7 @@
                     break;
                 case 'intermediateStop':
                     activePointCreationMode = 'intermediateStop';
-                    statusP.textContent = "Modo 'Añadir Parada Intermedia' ACTIVO. Toca el mapa para añadir.";
+                    statusP.textContent = `Modo 'Añadir Parada Intermedia' ACTIVO para Bandera ${currentEditingFlagView}. Toca el mapa para añadir.`;
                     updateWaypointMarkersVisibility(false);
                     break;
                 case 'lineEndpoint':
@@ -475,8 +484,11 @@
             } else {
                 currentEditingFlagView = routeSettings.flagNameIda;
             }
-            btn.textContent = `Vista Trazado: ${currentEditingFlagView}`;
-            redrawRouteLine();
+            btn.textContent = `Bandera Activa (Edición): ${currentEditingFlagView}`;
+            if (activePointCreationMode === 'intermediateStop') { // Update status text if this mode is active
+                 setActiveMode('intermediateStop');
+            }
+            // No need to redraw polylines here, as both are always visible during editing.
         }
         
         function updateRouteSettings() {
@@ -488,18 +500,28 @@
             routeSettings.flagNameIda = document.getElementById('flagNameIdaInput').value || "IDA";
             routeSettings.flagNameVuelta = document.getElementById('flagNameVueltaInput').value || "VUELTA";
         
-            if (currentEditingFlagView === oldIdaName) {
+            // Update currentEditingFlagView if its underlying name changed
+            if (currentEditingFlagView === oldIdaName && oldIdaName !== routeSettings.flagNameIda) {
                 currentEditingFlagView = routeSettings.flagNameIda;
-            } else if (currentEditingFlagView === oldVueltaName) {
+            } else if (currentEditingFlagView === oldVueltaName && oldVueltaName !== routeSettings.flagNameVuelta) {
                 currentEditingFlagView = routeSettings.flagNameVuelta;
-            } else { 
-                currentEditingFlagView = routeSettings.flagNameIda;
             }
-        
-            const btn = document.getElementById('toggleEditingFlagViewBtn');
-            if (btn) { 
-                btn.textContent = `Vista Trazado: ${currentEditingFlagView}`;
-            }
+            document.getElementById('toggleEditingFlagViewBtn').textContent = `Bandera Activa (Edición): ${currentEditingFlagView}`;
+            
+            // Update tracking start flag selector
+            const startTrackingFlagSelect = document.getElementById('startTrackingFlag');
+            startTrackingFlagSelect.innerHTML = `
+                <option value="${routeSettings.flagNameIda}">${routeSettings.flagNameIda}</option>
+                <option value="${routeSettings.flagNameVuelta}">${routeSettings.flagNameVuelta}</option>
+            `;
+
+            // Update flagAffinity for existing intermediate stops if names changed
+            routePoints.forEach(p => {
+                if (p.pointCategory === 'intermediateStop') {
+                    if (p.flagAffinity === oldIdaName) p.flagAffinity = routeSettings.flagNameIda;
+                    else if (p.flagAffinity === oldVueltaName) p.flagAffinity = routeSettings.flagNameVuelta;
+                }
+            });
             
             if (oldTotalTurns !== routeSettings.totalTurns) {
                 routePoints.forEach(p => {
@@ -516,17 +538,18 @@
                         p.turnSchedules = newSchedules;
                     }
                 });
-                // If a line endpoint is currently being edited, refresh its schedule UI
                 if (currentlyEditingPoint && currentlyEditingPoint.pointCategory === 'lineEndpoint') {
                     activateEditModeForPoint(currentlyEditingPoint); 
                 }
             }
 
             if (!isTracking) {
-                trackingState.currentFlag = routeSettings.flagNameIda;
+                trackingState.currentFlag = routeSettings.flagNameIda; // Default tracking start
             }
             redrawRouteLine(); 
             updateTrackingStatusDisplay();
+            updateAllMarkerIconsAndLabels();
+            updateStopsList();
         }
 
         function formatDateTimeForInput(date) {
@@ -540,7 +563,7 @@
             if (isTracking) { return; }
             if (point.pointCategory === 'waypoint') {
                  if (activePointCreationMode === 'waypoint') {
-                    // Deletion is handled by waypoint's own click listener when in waypoint mode
+                    // Deletion is handled by waypoint's own click listener
                  } else {
                     alert("Para interactuar con Puntos de Paso, active el modo '+Pto. Paso'.");
                  }
@@ -549,10 +572,9 @@
             
             if (activePointCreationMode !== null && activePointCreationMode !== 'schedule') {
                 setActiveMode(null); 
-            } else if (activePointCreationMode !== 'schedule') { // if it's null, and not schedule mode
+            } else if (activePointCreationMode !== 'schedule') {
                  cancelEdit();
             }
-
 
             currentlyEditingPoint = point;
             document.getElementById('pointName').value = point.name;
@@ -560,16 +582,15 @@
             
             document.getElementById('lineEndpointTurnSchedulesContainer').style.display = 'none';
             document.getElementById('lineEndpointScheduleHelperText').style.display = 'none';
-            document.getElementById('intermediateStopTime').style.display = 'none';
+            document.getElementById('intermediateStopTimeContainer').style.display = 'none';
 
             if (point.pointCategory === 'lineEndpoint') {
                 const container = document.getElementById('lineEndpointTurnSchedulesContainer');
-                container.innerHTML = ''; // Clear previous
+                container.innerHTML = ''; 
                 container.style.display = 'block';
                 document.getElementById('lineEndpointScheduleHelperText').style.display = 'block';
 
                 const totalTurns = routeSettings.totalTurns;
-                // Ensure turnSchedules array is initialized and of correct length
                 if (!point.turnSchedules || point.turnSchedules.length !== totalTurns) {
                     const newSchedules = new Array(totalTurns);
                     for (let i = 0; i < totalTurns; i++) {
@@ -585,32 +606,18 @@
                 for (let i = 0; i < totalTurns; i++) {
                     const turnNum = i + 1;
                     const turnSchedule = point.turnSchedules[i];
-
                     const turnDiv = document.createElement('div');
                     turnDiv.className = 'turn-schedule-group';
                     turnDiv.innerHTML = `<h4>Vuelta ${turnNum}</h4>`;
-
-                    let label1Text, input1Id, value1;
-                    let label2Text, input2Id, value2;
+                    let label1Text, input1Id, value1, label2Text, input2Id, value2;
 
                     if (point.isFirstEndpoint) { // P1
-                        label1Text = "Salida Programada (Inicio IDA):";
-                        input1Id = `endpoint_turn_${turnNum}_time1`; // P1 Departure
-                        value1 = turnSchedule.scheduledDeparture;
-
-                        label2Text = "Llegada Programada (Fin VUELTA):";
-                        input2Id = `endpoint_turn_${turnNum}_time2`; // P1 Arrival
-                        value2 = turnSchedule.scheduledArrival;
+                        label1Text = "Salida Programada (Inicio IDA):"; input1Id = `endpoint_turn_${turnNum}_time1`; value1 = turnSchedule.scheduledDeparture;
+                        label2Text = "Llegada Programada (Fin VUELTA):"; input2Id = `endpoint_turn_${turnNum}_time2`; value2 = turnSchedule.scheduledArrival;
                     } else { // P2
-                        label1Text = "Llegada Programada (Fin IDA):";
-                        input1Id = `endpoint_turn_${turnNum}_time1`; // P2 Arrival
-                        value1 = turnSchedule.scheduledArrival;
-
-                        label2Text = "Salida Programada (Inicio VUELTA):";
-                        input2Id = `endpoint_turn_${turnNum}_time2`; // P2 Departure
-                        value2 = turnSchedule.scheduledDeparture;
+                        label1Text = "Llegada Programada (Fin IDA):"; input1Id = `endpoint_turn_${turnNum}_time1`; value1 = turnSchedule.scheduledArrival;
+                        label2Text = "Salida Programada (Inicio VUELTA):"; input2Id = `endpoint_turn_${turnNum}_time2`; value2 = turnSchedule.scheduledDeparture;
                     }
-
                     turnDiv.innerHTML += `
                         <label for="${input1Id}">${label1Text}</label>
                         <input type="datetime-local" id="${input1Id}" value="${formatDateTimeForInput(value1)}">
@@ -624,10 +631,10 @@
                 }
 
             } else if (point.pointCategory === 'intermediateStop') {
-                document.getElementById('intermediateStopTime').style.display = 'block';
-                document.getElementById('pointScheduledTimeIntermediateIDA').value = formatDateTimeForInput(point.times.scheduledIDA);
-                document.getElementById('pointScheduledTimeIntermediateVUELTA').value = formatDateTimeForInput(point.times.scheduledVUELTA);
-                 if(timeEditingPriority) document.getElementById('pointScheduledTimeIntermediateIDA').focus();
+                document.getElementById('intermediateStopTimeContainer').style.display = 'block';
+                document.getElementById('intermediateTimeLabel').textContent = `Horario Programado (Parada en ${point.flagAffinity}):`;
+                document.getElementById('pointScheduledTimeIntermediate').value = formatDateTimeForInput(point.scheduledTime);
+                 if(timeEditingPriority) document.getElementById('pointScheduledTimeIntermediate').focus();
             }
             
             document.getElementById('editPointControls').style.display = 'block';
@@ -638,15 +645,11 @@
             currentlyEditingPoint = null;
             document.getElementById('pointName').value = "";
             document.getElementById('pointName').readOnly = false;
-
             document.getElementById('lineEndpointTurnSchedulesContainer').style.display = 'none';
             document.getElementById('lineEndpointTurnSchedulesContainer').innerHTML = '';
             document.getElementById('lineEndpointScheduleHelperText').style.display = 'none';
-            
-            document.getElementById('pointScheduledTimeIntermediateIDA').value = "";
-            document.getElementById('pointScheduledTimeIntermediateVUELTA').value = "";
-            document.getElementById('intermediateStopTime').style.display = 'none';
-            
+            document.getElementById('pointScheduledTimeIntermediate').value = "";
+            document.getElementById('intermediateStopTimeContainer').style.display = 'none';
             document.getElementById('editPointControls').style.display = 'none';
         }
 
@@ -662,38 +665,27 @@
             if (currentlyEditingPoint.pointCategory === 'lineEndpoint') {
                 const totalTurns = routeSettings.totalTurns;
                 currentlyEditingPoint.turnSchedules = []; 
-
                 for (let i = 0; i < totalTurns; i++) {
                     const turnNum = i + 1;
                     const time1Value = document.getElementById(`endpoint_turn_${turnNum}_time1`).value;
                     const time2Value = document.getElementById(`endpoint_turn_${turnNum}_time2`).value;
-                    
                     let date1 = time1Value ? new Date(time1Value) : null;
                     let date2 = time2Value ? new Date(time2Value) : null;
-
                     if ((time1Value && isNaN(date1.getTime())) || (time2Value && isNaN(date2.getTime()))) {
                         alert(`Formato de fecha/hora inválido para Punta de Línea, Vuelta ${turnNum}.`); return;
                     }
-                    
-                    if (currentlyEditingPoint.isFirstEndpoint) { // P1
+                    if (currentlyEditingPoint.isFirstEndpoint) { 
                         currentlyEditingPoint.turnSchedules.push({ scheduledDeparture: date1, scheduledArrival: date2 });
-                    } else { // P2
+                    } else { 
                         currentlyEditingPoint.turnSchedules.push({ scheduledArrival: date1, scheduledDeparture: date2 });
                     }
                 }
             } else if (currentlyEditingPoint.pointCategory === 'intermediateStop') {
-                const idaTimeValue = document.getElementById('pointScheduledTimeIntermediateIDA').value;
-                const vueltaTimeValue = document.getElementById('pointScheduledTimeIntermediateVUELTA').value;
-
-                currentlyEditingPoint.times.scheduledIDA = idaTimeValue ? new Date(idaTimeValue) : null;
-                if (idaTimeValue && isNaN(currentlyEditingPoint.times.scheduledIDA.getTime())) {
-                     alert("Formato de fecha/hora inválido para Parada Intermedia (IDA).");
-                     currentlyEditingPoint.times.scheduledIDA = null; return;
-                }
-                currentlyEditingPoint.times.scheduledVUELTA = vueltaTimeValue ? new Date(vueltaTimeValue) : null;
-                if (vueltaTimeValue && isNaN(currentlyEditingPoint.times.scheduledVUELTA.getTime())) {
-                     alert("Formato de fecha/hora inválido para Parada Intermedia (VUELTA).");
-                     currentlyEditingPoint.times.scheduledVUELTA = null; return;
+                const timeValue = document.getElementById('pointScheduledTimeIntermediate').value;
+                currentlyEditingPoint.scheduledTime = timeValue ? new Date(timeValue) : null;
+                if (timeValue && isNaN(currentlyEditingPoint.scheduledTime.getTime())) {
+                     alert("Formato de fecha/hora inválido para Parada Intermedia.");
+                     currentlyEditingPoint.scheduledTime = null; return;
                 }
             }
             
@@ -709,15 +701,12 @@
 
         function deleteSelectedPoint() {
             if (!currentlyEditingPoint || currentlyEditingPoint.pointCategory === 'waypoint') return;
-        
             if (confirm(`¿Seguro que quieres borrar el punto "${currentlyEditingPoint.name}"?`)) {
                 map.removeLayer(currentlyEditingPoint.marker);
                 if (currentlyEditingPoint.radiusCircle) map.removeLayer(currentlyEditingPoint.radiusCircle);
-                
                 const originalPointCategory = currentlyEditingPoint.pointCategory;
                 const pointNameToDelete = currentlyEditingPoint.name; 
                 routePoints = routePoints.filter(p => p.id !== currentlyEditingPoint.id);
-                
                 if (originalPointCategory === 'lineEndpoint') {
                     const remainingLineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
                     if (remainingLineEndpoints.length > 0) {
@@ -726,13 +715,8 @@
                          if(remainingLineEndpoints.length > 1) remainingLineEndpoints[1].isFirstEndpoint = false;
                     }
                 }
-        
-                if (document.getElementById('autoCalcTimes').checked) {
-                    calculateAndApplyAllIntermediateTimes();
-                }
-                updateAllMarkerIconsAndLabels();
-                redrawRouteLine();
-                updateStopsList();
+                if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes();
+                updateAllMarkerIconsAndLabels(); redrawRouteLine(); updateStopsList();
                 alert(`Punto "${pointNameToDelete}" borrado.`);
             }
             cancelEdit(); 
@@ -740,6 +724,7 @@
         
         function updateAllMarkerIconsAndLabels() {
             const displayOrderedPoints = getSortedRoutePointsForDisplay(); 
+            let intermediateCounters = { [routeSettings.flagNameIda]: 1, [routeSettings.flagNameVuelta]: 1 };
 
             routePoints.forEach(p => { 
                 if (p.marker) {
@@ -747,34 +732,29 @@
                     if (p.pointCategory === 'lineEndpoint') {
                         text = p.name; 
                     } else if (p.pointCategory === 'intermediateStop') {
-                        const intermediateStopsOnly = displayOrderedPoints.filter(dp => dp.pointCategory === 'intermediateStop');
-                        const displayIdx = intermediateStopsOnly.findIndex(dp => dp.id === p.id);
+                        // Find its visual index within its own flag affinity group
+                        const stopsOfSameFlag = displayOrderedPoints.filter(dp => 
+                            dp.pointCategory === 'intermediateStop' && dp.flagAffinity === p.flagAffinity
+                        );
+                        const displayIdx = stopsOfSameFlag.findIndex(dp => dp.id === p.id);
                         text = (displayIdx !== -1) ? String(displayIdx + 1) : '?';
                     }
-                    p.marker.setIcon(createDivIcon(text, p.pointCategory, p.isFirstEndpoint));
+                    p.marker.setIcon(createDivIcon(text, p.pointCategory, p.isFirstEndpoint, p.flagAffinity));
                 }
             });
         }
 
         function onMapClick(e) {
             if (isTracking) { alert("Detén el seguimiento para modificar la ruta."); return; }
-            
             let targetIsMarkerIcon = e.originalEvent.target.closest && e.originalEvent.target.closest('.leaflet-marker-icon');
-            
-            if (currentlyEditingPoint && !targetIsMarkerIcon) {
-                cancelEdit();
-            }
+            if (currentlyEditingPoint && !targetIsMarkerIcon) cancelEdit();
             if (targetIsMarkerIcon) return; 
 
-            const latlng = e.latlng;
-            const pointId = generateUniqueId();
+            const latlng = e.latlng; const pointId = generateUniqueId();
             
             if (activePointCreationMode) {
                 document.getElementById('pointName').value = ""; 
-                let newPointData = {
-                    id: pointId, lat: latlng.lat, lng: latlng.lng,
-                    originalIndex: routePoints.length, 
-                };
+                let newPointData = { id: pointId, lat: latlng.lat, lng: latlng.lng, originalIndex: routePoints.length };
 
                 switch (activePointCreationMode) {
                     case 'waypoint':
@@ -785,9 +765,8 @@
                             marker: L.marker(latlng, { icon: createDivIcon(null, 'waypoint'), draggable: true }),
                             radiusCircle: null, originalIndex: routePoints.length 
                         };
-                        if (map.hasLayer(waypoint.marker)) map.removeLayer(waypoint.marker);
+                        if (map.hasLayer(waypoint.marker)) map.removeLayer(waypoint.marker); // Should not happen if icon is properly shown
                         map.addLayer(waypoint.marker);
-
                         waypoint.marker.on('dragend', function(event) {
                             if (isTracking) { event.target.setLatLng(L.latLng(waypoint.lat, waypoint.lng)); return; }
                             const pos = event.target.getLatLng(); waypoint.lat = pos.lat; waypoint.lng = pos.lng;
@@ -803,30 +782,25 @@
                                     redrawRouteLine();
                                     if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes();
                                 }
-                            } else {
-                                alert("Para borrar Puntos de Paso, active el modo '+Pto. Paso'.");
-                            }
+                            } else alert("Para borrar Puntos de Paso, active el modo '+Pto. Paso'.");
                         });
                         routePoints.push(waypoint);
                         routePoints.sort((a,b) => a.originalIndex - b.originalIndex); 
                         routePoints.forEach((p, idx) => p.originalIndex = idx);
-
                         if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes(); 
-                        redrawRouteLine();
-                        return; 
+                        redrawRouteLine(); return; 
 
                     case 'intermediateStop':
-                        newPointData.name = `Parada ${routePoints.filter(p => p.pointCategory === 'intermediateStop').length + 1}`;
+                        const flagSpecificCount = routePoints.filter(p => p.pointCategory === 'intermediateStop' && p.flagAffinity === currentEditingFlagView).length + 1;
+                        newPointData.name = `Parada ${flagSpecificCount} (${currentEditingFlagView})`;
                         newPointData.pointCategory = 'intermediateStop';
-                        newPointData.times = { scheduledIDA: null, scheduledVUELTA: null };
+                        newPointData.flagAffinity = currentEditingFlagView;
+                        newPointData.scheduledTime = null;
                         break;
 
                     case 'lineEndpoint':
                         const currentLineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
-                        if (currentLineEndpoints.length >= 2) {
-                            alert("Ya existen dos Puntas de Línea. No se pueden añadir más.");
-                            return;
-                        }
+                        if (currentLineEndpoints.length >= 2) { alert("Ya existen dos Puntas de Línea."); return; }
                         const isFirstEp = (currentLineEndpoints.length === 0);
                         newPointData.name = isFirstEp ? "Punta de Línea 1" : "Punta de Línea 2";
                         newPointData.pointCategory = 'lineEndpoint';
@@ -838,19 +812,18 @@
                     default: return; 
                 }
                 
-                const newPoint = { ...newPointData };
-                routePoints.push(newPoint);
+                const newPoint = { ...newPointData }; routePoints.push(newPoint);
                 routePoints.sort((a,b) => a.originalIndex - b.originalIndex); 
                 routePoints.forEach((p, idx) => p.originalIndex = idx);
 
                 newPoint.marker = L.marker(latlng, { 
-                    icon: createDivIcon(newPoint.name, newPoint.pointCategory, newPoint.isFirstEndpoint), draggable: true 
+                    icon: createDivIcon(newPoint.name, newPoint.pointCategory, newPoint.isFirstEndpoint, newPoint.flagAffinity), draggable: true 
                 }).addTo(map);
                 newPoint.radiusCircle = L.circle(latlng, {
                     radius: currentStopRadius, 
-                    color: (newPoint.pointCategory === 'lineEndpoint' ? (newPoint.isFirstEndpoint ? '#FF8C00':'#DA70D6') : '#2196F3'), 
+                    color: (newPoint.pointCategory === 'lineEndpoint' ? (newPoint.isFirstEndpoint ? '#FF8C00':'#DA70D6') : (newPoint.flagAffinity === routeSettings.flagNameIda ? 'blue' : 'red')), 
                     weight: 1, opacity: 0.5, 
-                    fillColor: (newPoint.pointCategory === 'lineEndpoint' ? (newPoint.isFirstEndpoint ? '#FF8C00':'#DA70D6') : '#2196F3'), fillOpacity: 0.2
+                    fillColor: (newPoint.pointCategory === 'lineEndpoint' ? (newPoint.isFirstEndpoint ? '#FF8C00':'#DA70D6') : (newPoint.flagAffinity === routeSettings.flagNameIda ? 'blue' : 'red')), fillOpacity: 0.2
                 }).addTo(map);
 
                 newPoint.marker.on('dragend', function(event) {
@@ -865,52 +838,58 @@
                 
                 updateAllMarkerIconsAndLabels();
                 if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes();
-                redrawRouteLine();
-                updateStopsList();
-            } else if (timeEditingPriority) {
-                // In 'schedule' mode, map click itself does nothing unless it's on a marker.
+                redrawRouteLine(); updateStopsList();
             }
         }
         
         function getPathPointsForPolyline(flagNameToUse) {
             const allPointsSorted = [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex);
-            if (allPointsSorted.length < 1) return []; 
+            if (allPointsSorted.length < 1) return [];
 
             const lineEndpoints = allPointsSorted.filter(p => p.pointCategory === 'lineEndpoint');
-
-            if (lineEndpoints.length < 2) {
-                return allPointsSorted;
+            if (lineEndpoints.length < 2) { // Not enough EPs to define clear IDA/VUELTA paths
+                return allPointsSorted.filter(p => 
+                    p.pointCategory !== 'intermediateStop' || p.flagAffinity === flagNameToUse
+                );
             }
 
             const p1 = lineEndpoints.find(p => p.isFirstEndpoint);
             const p2 = lineEndpoints.find(p => !p.isFirstEndpoint);
-
-            if (!p1 || !p2) { 
-                return allPointsSorted;
+            if (!p1 || !p2) { // Should not happen if 2 L.E. exist
+                return allPointsSorted.filter(p => 
+                    p.pointCategory !== 'intermediateStop' || p.flagAffinity === flagNameToUse
+                );
             }
 
             const p1ActualIndexInSortedArray = allPointsSorted.findIndex(p => p.id === p1.id);
             const p2ActualIndexInSortedArray = allPointsSorted.findIndex(p => p.id === p2.id);
+            let segmentPointsUnfiltered;
 
-            if (flagNameToUse === routeSettings.flagNameIda) {
+            if (flagNameToUse === routeSettings.flagNameIda) { // P1 to P2
                 if (p1ActualIndexInSortedArray < p2ActualIndexInSortedArray) {
-                    return allPointsSorted.slice(p1ActualIndexInSortedArray, p2ActualIndexInSortedArray + 1);
+                    segmentPointsUnfiltered = allPointsSorted.slice(p1ActualIndexInSortedArray, p2ActualIndexInSortedArray + 1);
                 } else { 
-                    return [
+                    segmentPointsUnfiltered = [
                         ...allPointsSorted.slice(p1ActualIndexInSortedArray), 
                         ...allPointsSorted.slice(0, p2ActualIndexInSortedArray + 1)
                     ];
                 }
-            } else { // VUELTA
+            } else { // VUELTA: P2 to P1
                 if (p2ActualIndexInSortedArray < p1ActualIndexInSortedArray) {
-                    return allPointsSorted.slice(p2ActualIndexInSortedArray, p1ActualIndexInSortedArray + 1);
+                    segmentPointsUnfiltered = allPointsSorted.slice(p2ActualIndexInSortedArray, p1ActualIndexInSortedArray + 1);
                 } else { 
-                    return [
+                    segmentPointsUnfiltered = [
                         ...allPointsSorted.slice(p2ActualIndexInSortedArray), 
                         ...allPointsSorted.slice(0, p1ActualIndexInSortedArray + 1)
                     ];
                 }
             }
+            
+            return segmentPointsUnfiltered.filter(p => 
+                p.pointCategory === 'lineEndpoint' || 
+                p.pointCategory === 'waypoint' ||
+                (p.pointCategory === 'intermediateStop' && p.flagAffinity === flagNameToUse)
+            );
         }
 
 
@@ -918,8 +897,7 @@
             const autoCalc = document.getElementById('autoCalcTimes').checked;
             if (!autoCalc) { 
                 routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => {
-                    stop.times.scheduledIDA = null;
-                    stop.times.scheduledVUELTA = null;
+                    stop.scheduledTime = null;
                 });
                 updateStopsList(); return; 
             }
@@ -931,7 +909,6 @@
             const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
             if (!p1 || !p2) { updateStopsList(); return; }
 
-            // Use Turn 1 schedules for calculating intermediate stop times
             if (!p1.turnSchedules || p1.turnSchedules.length === 0 || !p2.turnSchedules || p2.turnSchedules.length === 0) {
                 console.warn("Turn schedules for P1 or P2 are not initialized for auto-calculation.");
                 updateStopsList(); return;
@@ -939,66 +916,49 @@
             const p1Turn1Schedule = p1.turnSchedules[0];
             const p2Turn1Schedule = p2.turnSchedules[0];
 
-
-            const allPointsSorted = [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex);
-            const p1ActualIndex = allPointsSorted.findIndex(p => p.id === p1.id);
-            const p2ActualIndex = allPointsSorted.findIndex(p => p.id === p2.id);
-
-            // IDA leg times calculation (based on Turn 1 of P1/P2)
+            // IDA leg times calculation
             if (p1Turn1Schedule.scheduledDeparture && p2Turn1Schedule.scheduledArrival) {
-                let idaLegPath;
-                if (p1ActualIndex < p2ActualIndex) {
-                    idaLegPath = allPointsSorted.slice(p1ActualIndex, p2ActualIndex + 1);
-                } else { // Wrap around
-                    idaLegPath = [...allPointsSorted.slice(p1ActualIndex), ...allPointsSorted.slice(0, p2ActualIndex + 1)];
-                }
-                distributeTimesProportionally(idaLegPath, new Date(p1Turn1Schedule.scheduledDeparture), new Date(p2Turn1Schedule.scheduledArrival), 'scheduledIDA');
+                const idaLegPath = getPathPointsForPolyline(routeSettings.flagNameIda);
+                distributeTimesProportionally(idaLegPath, new Date(p1Turn1Schedule.scheduledDeparture), new Date(p2Turn1Schedule.scheduledArrival), routeSettings.flagNameIda);
             } else {
-                routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => stop.times.scheduledIDA = null);
+                routePoints.filter(p => p.pointCategory === 'intermediateStop' && p.flagAffinity === routeSettings.flagNameIda)
+                           .forEach(stop => stop.scheduledTime = null);
             }
 
-            // VUELTA leg times calculation (based on Turn 1 of P1/P2)
+            // VUELTA leg times calculation
             if (p2Turn1Schedule.scheduledDeparture && p1Turn1Schedule.scheduledArrival) {
-                let vueltaLegPath;
-                 if (p2ActualIndex < p1ActualIndex) {
-                    vueltaLegPath = allPointsSorted.slice(p2ActualIndex, p1ActualIndex + 1);
-                } else { // Wrap around
-                    vueltaLegPath = [...allPointsSorted.slice(p2ActualIndex), ...allPointsSorted.slice(0, p1ActualIndex + 1)];
-                }
-                distributeTimesProportionally(vueltaLegPath, new Date(p2Turn1Schedule.scheduledDeparture), new Date(p1Turn1Schedule.scheduledArrival), 'scheduledVUELTA');
+                const vueltaLegPath = getPathPointsForPolyline(routeSettings.flagNameVuelta);
+                distributeTimesProportionally(vueltaLegPath, new Date(p2Turn1Schedule.scheduledDeparture), new Date(p1Turn1Schedule.scheduledArrival), routeSettings.flagNameVuelta);
             } else {
-                routePoints.filter(p => p.pointCategory === 'intermediateStop').forEach(stop => stop.times.scheduledVUELTA = null);
+                routePoints.filter(p => p.pointCategory === 'intermediateStop' && p.flagAffinity === routeSettings.flagNameVuelta)
+                           .forEach(stop => stop.scheduledTime = null);
             }
             updateStopsList();
         }
 
-        function distributeTimesProportionally(legPathPoints, legStartTimeDate, legEndTimeDate, timeKey) {
+        function distributeTimesProportionally(legPathPoints, legStartTimeDate, legEndTimeDate, flagAffinityForDistribution) {
             if (!legStartTimeDate || !legEndTimeDate || legPathPoints.length < 2) return;
             
             const legStartMillis = legStartTimeDate.getTime();
             const legEndMillis = legEndTimeDate.getTime();
             const totalDurationMillis = legEndMillis - legStartMillis;
 
-            const intermediateStopsInLeg = legPathPoints.slice(1, -1).filter(p => p.pointCategory === 'intermediateStop');
-            if (totalDurationMillis <= 0) { // Includes same start/end time
+            const intermediateStopsInLeg = legPathPoints.slice(1, -1)
+                .filter(p => p.pointCategory === 'intermediateStop' && p.flagAffinity === flagAffinityForDistribution);
+
+            if (totalDurationMillis <= 0) {
                 intermediateStopsInLeg.forEach(p_leg => {
                     const pointInMainRoute = routePoints.find(rp => rp.id === p_leg.id);
-                    if(pointInMainRoute) {
-                        // If duration is zero, set intermediate times to be same as leg start time
-                        pointInMainRoute.times[timeKey] = new Date(legStartMillis); 
-                    }
+                    if(pointInMainRoute) pointInMainRoute.scheduledTime = new Date(legStartMillis); 
                 });
                 return;
             }
 
-
-            let totalDistance = 0;
-            const segmentDistances = [];
+            let totalDistance = 0; const segmentDistances = [];
             for (let i = 0; i < legPathPoints.length - 1; i++) {
                 const dist = L.latLng(legPathPoints[i].lat, legPathPoints[i].lng)
                                .distanceTo(L.latLng(legPathPoints[i+1].lat, legPathPoints[i+1].lng));
-                segmentDistances.push(dist);
-                totalDistance += dist;
+                segmentDistances.push(dist); totalDistance += dist;
             }
 
             if (totalDistance < 1.0) { 
@@ -1006,23 +966,29 @@
                 if (numTimeSegments <= 0) return;
                 const timePerSegment = totalDurationMillis / numTimeSegments;
                 let currentTime = legStartMillis;
-                legPathPoints.slice(1, -1).forEach(p_leg => { 
-                    if (p_leg.pointCategory === 'intermediateStop') {
-                       currentTime += timePerSegment; 
-                       const pointInMainRoute = routePoints.find(rp => rp.id === p_leg.id);
-                       if(pointInMainRoute) pointInMainRoute.times[timeKey] = new Date(currentTime);
-                    }
-                });
+                // This part needs to consider only the intermediate stops relevant to the flagAffinityForDistribution
+                const relevantLegPointsForTiming = legPathPoints.filter(p => 
+                    p.pointCategory === 'lineEndpoint' || 
+                    (p.pointCategory === 'intermediateStop' && p.flagAffinity === flagAffinityForDistribution)
+                );
+
+                // Iterate through the stops that need timing
+                for (let i = 0; i < intermediateStopsInLeg.length; i++) {
+                    currentTime += timePerSegment;
+                    const pointInMainRoute = routePoints.find(rp => rp.id === intermediateStopsInLeg[i].id);
+                    if (pointInMainRoute) pointInMainRoute.scheduledTime = new Date(currentTime);
+                }
+
             } else {
                 let accumulatedDistance = 0;
                 for (let i = 0; i < legPathPoints.length - 1; i++) {
                     accumulatedDistance += segmentDistances[i];
                     const nextPointInPath = legPathPoints[i+1];
-                    if (nextPointInPath.pointCategory === 'intermediateStop') {
+                    if (nextPointInPath.pointCategory === 'intermediateStop' && nextPointInPath.flagAffinity === flagAffinityForDistribution) {
                         const proportionOfRoute = accumulatedDistance / totalDistance;
                         const timeOffsetMillis = totalDurationMillis * proportionOfRoute;
                         const pointInMainRoute = routePoints.find(rp => rp.id === nextPointInPath.id);
-                        if(pointInMainRoute) pointInMainRoute.times[timeKey] = new Date(legStartMillis + timeOffsetMillis);
+                        if(pointInMainRoute) pointInMainRoute.scheduledTime = new Date(legStartMillis + timeOffsetMillis);
                     }
                 }
             }
@@ -1035,29 +1001,43 @@
                 if (p.radiusCircle) map.removeLayer(p.radiusCircle);
             });
             routePoints = [];
-            if (routeLine) map.removeLayer(routeLine); routeLine = null;
-            document.getElementById('pointName').value = "";
-            currentEditingFlagView = routeSettings.flagNameIda;
-            const editFlagBtn = document.getElementById('toggleEditingFlagViewBtn');
-            if(editFlagBtn) editFlagBtn.textContent = `Vista Trazado: ${routeSettings.flagNameIda}`;
+            if (routeLineIda) map.removeLayer(routeLineIda); routeLineIda = null;
+            if (routeLineVuelta) map.removeLayer(routeLineVuelta); routeLineVuelta = null;
+            if (trackingRouteLine) map.removeLayer(trackingRouteLine); trackingRouteLine = null;
 
-            updateStopsList(); updateAllMarkerIconsAndLabels(); 
-            redrawRouteLine(); 
+            document.getElementById('pointName').value = "";
+            currentEditingFlagView = routeSettings.flagNameIda; // Reset active editing flag
+            document.getElementById('toggleEditingFlagViewBtn').textContent = `Bandera Activa (Edición): ${routeSettings.flagNameIda}`;
+            updateStopsList(); updateAllMarkerIconsAndLabels(); redrawRouteLine(); 
         }
 
         function redrawRouteLine() {
-            if (routeLine) map.removeLayer(routeLine); routeLine = null;
+            if (routeLineIda) map.removeLayer(routeLineIda); routeLineIda = null;
+            if (routeLineVuelta) map.removeLayer(routeLineVuelta); routeLineVuelta = null;
+            if (trackingRouteLine) map.removeLayer(trackingRouteLine); trackingRouteLine = null;
             
-            const flagForPolyline = isTracking ? trackingState.currentFlag : currentEditingFlagView;
-            const polylinePathPoints = getPathPointsForPolyline(flagForPolyline); 
-            
-            if (polylinePathPoints.length > 1) {
-                const latlngs = polylinePathPoints.map(p => [p.lat, p.lng]);
-                const color = (flagForPolyline === routeSettings.flagNameIda) ? 'blue' : 'red';
-                routeLine = L.polyline(latlngs, {color: color, weight: 5}).addTo(map);
+            if (isTracking) {
+                const polylinePathPoints = getPathPointsForPolyline(trackingState.currentFlag);
+                if (polylinePathPoints.length > 1) {
+                    const latlngs = polylinePathPoints.map(p => [p.lat, p.lng]);
+                    const color = (trackingState.currentFlag === routeSettings.flagNameIda) ? 'blue' : 'red';
+                    trackingRouteLine = L.polyline(latlngs, {color: color, weight: 7, opacity: 0.8}).addTo(map);
+                }
+            } else { // Editing mode, show both
+                const idaPathPoints = getPathPointsForPolyline(routeSettings.flagNameIda);
+                if (idaPathPoints.length > 1) {
+                    const idaLatLngs = idaPathPoints.map(p => [p.lat, p.lng]);
+                    routeLineIda = L.polyline(idaLatLngs, {color: 'blue', weight: 5, dashArray: '5, 5'}).addTo(map);
+                }
+                const vueltaPathPoints = getPathPointsForPolyline(routeSettings.flagNameVuelta);
+                if (vueltaPathPoints.length > 1) {
+                    const vueltaLatLngs = vueltaPathPoints.map(p => [p.lat, p.lng]);
+                    routeLineVuelta = L.polyline(vueltaLatLngs, {color: 'red', weight: 5, dashArray: '5, 5'}).addTo(map);
+                }
             }
         }
         
+        // Gets points sorted by originalIndex, excluding waypoints, for list display
         function getSortedRoutePointsForDisplay() { 
             return [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex)
                                   .filter(p => p.pointCategory !== 'waypoint'); 
@@ -1079,13 +1059,13 @@
             if (displayPoints.length === 0) { listDiv.innerHTML = "No hay puntos definidos."; return; }
 
             let html = "<ul style='padding-left: 10px; list-style: none;'>";
-            let intermediateVisualCounter = 1; 
+            let intermediateVisualCounters = { [routeSettings.flagNameIda]: 1, [routeSettings.flagNameVuelta]: 1 };
             let overallCounter = 1;
+
             displayPoints.forEach((p) => { 
                 let typeText = "", timeStr = "N/A";
                 let itemClass = "stop-item";
                 let prefix = `${overallCounter++}. `;
-
 
                 if (p.pointCategory === 'lineEndpoint') {
                     itemClass += " line-endpoint-highlight";
@@ -1094,23 +1074,18 @@
                         const turn1Schedule = p.turnSchedules[0];
                         let depTime, arrTime;
                         if (p.isFirstEndpoint) {
-                            depTime = turn1Schedule.scheduledDeparture; // P1 IDA departure
-                            arrTime = turn1Schedule.scheduledArrival;   // P1 VUELTA arrival
+                            depTime = turn1Schedule.scheduledDeparture; arrTime = turn1Schedule.scheduledArrival;
                         } else {
-                            arrTime = turn1Schedule.scheduledArrival;   // P2 IDA arrival
-                            depTime = turn1Schedule.scheduledDeparture; // P2 VUELTA departure
+                            arrTime = turn1Schedule.scheduledArrival; depTime = turn1Schedule.scheduledDeparture;
                         }
                         timeStr = `Sal (V1): ${formatTime(depTime, false)} / Lleg (V1): ${formatTime(arrTime, false)}`;
                         if (depTime) timeStr += ` (${new Date(depTime).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
                         else if(arrTime) timeStr += ` (${new Date(arrTime).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
-                    } else {
-                        timeStr = "Horarios no definidos";
-                    }
+                    } else timeStr = "Horarios no definidos";
                 } else if (p.pointCategory === 'intermediateStop') {
-                    typeText = `Inter. ${intermediateVisualCounter++}`;
-                    timeStr = `IDA: ${formatTime(p.times.scheduledIDA, false)} / VTA: ${formatTime(p.times.scheduledVUELTA, false)}`;
-                    if (p.times.scheduledIDA) timeStr += ` (${new Date(p.times.scheduledIDA).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
-                    else if (p.times.scheduledVUELTA) timeStr += ` (${new Date(p.times.scheduledVUELTA).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
+                    typeText = `Inter. ${intermediateVisualCounters[p.flagAffinity]++} (${p.flagAffinity})`;
+                    timeStr = `Prog: ${formatTime(p.scheduledTime, false)}`;
+                     if (p.scheduledTime) timeStr += ` (${new Date(p.scheduledTime).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`;
                 }
                 html += `<li class="${itemClass}" onclick="focusPointOnMap('${p.id}')">${prefix}<b>${p.name}</b> (${typeText}) - ${timeStr}</li>`;
             });
@@ -1132,35 +1107,22 @@
             if (!routeNameInput.value) { alert("Por favor, ingresa un nombre para la ruta."); return; }
             
             const lineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
-            if (lineEndpoints.length < 2) {
-                 alert("Una ruta debe tener dos Puntas de Línea definidas (P1 y P2)."); return;
-            }
+            if (lineEndpoints.length < 2) { alert("Una ruta debe tener dos Puntas de Línea (P1 y P2)."); return; }
             const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint);
             const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
-
-            if (!p1 || !p2) {
-                alert("P1 y/o P2 no están correctamente identificados. Revisa la configuración de las puntas de línea."); return;
-            }
+            if (!p1 || !p2) { alert("P1 y/o P2 no están correctamente identificados."); return; }
 
             let allEndpointTimesSet = true;
             for (let i = 0; i < routeSettings.totalTurns; i++) {
-                if (!p1.turnSchedules || !p1.turnSchedules[i] || !p1.turnSchedules[i].scheduledDeparture || !p1.turnSchedules[i].scheduledArrival) {
-                    allEndpointTimesSet = false; break;
-                }
-                if (!p2.turnSchedules || !p2.turnSchedules[i] || !p2.turnSchedules[i].scheduledArrival || !p2.turnSchedules[i].scheduledDeparture) {
-                    allEndpointTimesSet = false; break;
-                }
+                if (!p1.turnSchedules || !p1.turnSchedules[i] || !p1.turnSchedules[i].scheduledDeparture || !p1.turnSchedules[i].scheduledArrival) { allEndpointTimesSet = false; break; }
+                if (!p2.turnSchedules || !p2.turnSchedules[i] || !p2.turnSchedules[i].scheduledArrival || !p2.turnSchedules[i].scheduledDeparture) { allEndpointTimesSet = false; break; }
             }
-            if (!allEndpointTimesSet) {
-                alert("Ambas Puntas de Línea (P1 y P2) deben tener sus horarios de salida y llegada definidos para CADA VUELTA.");
-                return;
-            }
+            if (!allEndpointTimesSet) { alert("Ambas Puntas de Línea (P1 y P2) deben tener horarios de salida y llegada definidos para CADA VUELTA."); return; }
 
             const savablePoints = routePoints.map(p => {
                 const pointData = { 
                     id: p.id, lat: p.lat, lng: p.lng, name: p.name, 
-                    pointCategory: p.pointCategory,
-                    originalIndex: p.originalIndex,
+                    pointCategory: p.pointCategory, originalIndex: p.originalIndex,
                 };
                 if (p.pointCategory === 'lineEndpoint') {
                     pointData.isFirstEndpoint = p.isFirstEndpoint;
@@ -1169,11 +1131,9 @@
                         scheduledArrival: ts.scheduledArrival ? new Date(ts.scheduledArrival).toISOString() : null
                     }));
                 } else if (p.pointCategory === 'intermediateStop') {
-                    pointData.times = {
-                        scheduledIDA: p.times.scheduledIDA ? new Date(p.times.scheduledIDA).toISOString() : null,
-                        scheduledVUELTA: p.times.scheduledVUELTA ? new Date(p.times.scheduledVUELTA).toISOString() : null
-                    };
-                }
+                    pointData.flagAffinity = p.flagAffinity;
+                    pointData.scheduledTime = p.scheduledTime ? new Date(p.scheduledTime).toISOString() : null;
+                } // Waypoints save as is
                 return pointData;
             });
             
@@ -1198,24 +1158,25 @@
             document.getElementById('totalTurnsInput').value = routeSettings.totalTurns;
             document.getElementById('flagNameIdaInput').value = routeSettings.flagNameIda;
             document.getElementById('flagNameVueltaInput').value = routeSettings.flagNameVuelta;
-            currentEditingFlagView = routeSettings.flagNameIda;
-            const editFlagBtn = document.getElementById('toggleEditingFlagViewBtn');
-            if (editFlagBtn) editFlagBtn.textContent = `Vista Trazado: ${routeSettings.flagNameIda}`;
+            currentEditingFlagView = routeSettings.flagNameIda; // Reset active editing flag
+            document.getElementById('toggleEditingFlagViewBtn').textContent = `Bandera Activa (Edición): ${routeSettings.flagNameIda}`;
+            
+            // Update tracking start flag selector
+            const startTrackingFlagSelect = document.getElementById('startTrackingFlag');
+            startTrackingFlagSelect.innerHTML = `
+                <option value="${routeSettings.flagNameIda}">${routeSettings.flagNameIda}</option>
+                <option value="${routeSettings.flagNameVuelta}">${routeSettings.flagNameVuelta}</option>
+            `;
             trackingState.currentFlag = routeSettings.flagNameIda;
 
 
             loadedPointsData.forEach((p_data) => {
                 const newPointBase = { ...p_data }; 
-                delete newPointBase.times; // Remove old times structure if present from very old saves
-                delete newPointBase.turnSchedules; // Remove this before re-assigning
-
                 if (p_data.pointCategory === 'lineEndpoint') {
-                    newPointBase.isFirstEndpoint = p_data.isFirstEndpoint; 
                     newPointBase.turnSchedules = (p_data.turnSchedules || []).map(ts_data => ({
                          scheduledDeparture: ts_data.scheduledDeparture ? new Date(ts_data.scheduledDeparture) : null,
                          scheduledArrival: ts_data.scheduledArrival ? new Date(ts_data.scheduledArrival) : null
                     }));
-                    // Ensure turnSchedules length matches current routeSettings.totalTurns
                     if (newPointBase.turnSchedules.length !== routeSettings.totalTurns) {
                         const adjustedSchedules = new Array(routeSettings.totalTurns);
                         for(let i=0; i < routeSettings.totalTurns; i++) {
@@ -1223,33 +1184,27 @@
                         }
                         newPointBase.turnSchedules = adjustedSchedules;
                     }
-
                 } else if (p_data.pointCategory === 'intermediateStop') {
-                     newPointBase.times = {
-                        scheduledIDA: p_data.times && p_data.times.scheduledIDA ? new Date(p_data.times.scheduledIDA) : null,
-                        scheduledVUELTA: p_data.times && p_data.times.scheduledVUELTA ? new Date(p_data.times.scheduledVUELTA) : null
-                     };
-                } else if (p_data.pointCategory === 'waypoint') {
-                    // Waypoints don't have special time structures here
+                     newPointBase.scheduledTime = p_data.scheduledTime ? new Date(p_data.scheduledTime) : null;
+                     // Ensure flagAffinity exists, default if loading very old data (unlikely with this structure)
+                     newPointBase.flagAffinity = p_data.flagAffinity || routeSettings.flagNameIda; 
                 }
-
-
-                const newPoint = { ...newPointBase }; 
-                routePoints.push(newPoint);
+                routePoints.push({ ...newPointBase });
             });
             routePoints.sort((a,b) => a.originalIndex - b.originalIndex);
 
             routePoints.forEach(p => {
                  p.marker = L.marker([p.lat, p.lng], { 
-                    icon: createDivIcon(p.name, p.pointCategory, p.isFirstEndpoint), 
+                    icon: createDivIcon(p.name, p.pointCategory, p.isFirstEndpoint, p.flagAffinity), 
                     draggable: true 
                 }).addTo(map);
                  if (p.pointCategory !== 'waypoint') {
+                    const circleColor = (p.pointCategory === 'lineEndpoint') 
+                        ? (p.isFirstEndpoint ? '#FF8C00':'#DA70D6') 
+                        : (p.flagAffinity === routeSettings.flagNameIda ? 'blue' : 'red');
                     p.radiusCircle = L.circle([p.lat, p.lng], {
-                        radius: currentStopRadius, 
-                        color: (p.pointCategory === 'lineEndpoint' ? (p.isFirstEndpoint ? '#FF8C00':'#DA70D6') : '#2196F3'), 
-                        weight: 1, opacity: 0.5, 
-                        fillColor: (p.pointCategory === 'lineEndpoint' ? (p.isFirstEndpoint ? '#FF8C00':'#DA70D6') : '#2196F3'), fillOpacity: 0.2
+                        radius: currentStopRadius, color: circleColor, weight: 1, opacity: 0.5, 
+                        fillColor: circleColor, fillOpacity: 0.2
                     }).addTo(map);
                     p.marker.on('click', function(ev) {L.DomEvent.stopPropagation(ev); if(isTracking)return; activateEditModeForPoint(p); });
                  } else { 
@@ -1263,9 +1218,7 @@
                                 redrawRouteLine();
                                 if (document.getElementById('autoCalcTimes').checked) calculateAndApplyAllIntermediateTimes();
                             }
-                        } else {
-                             alert("Para borrar Puntos de Paso, active el modo '+Pto. Paso'.");
-                        }
+                        } else alert("Para borrar Puntos de Paso, active el modo '+Pto. Paso'.");
                     });
                  }
                  p.marker.on('dragend', function(event){
@@ -1280,10 +1233,8 @@
             
             updateAllMarkerIconsAndLabels(); 
             updateWaypointMarkersVisibility(false); 
-            redrawRouteLine();
-            updateStopsList();
-
-            const boundsPoints = routePoints; 
+            redrawRouteLine(); updateStopsList();
+            const boundsPoints = routePoints.filter(p => p.pointCategory !== 'waypoint'); 
             if (boundsPoints.length > 0) {
                 const bounds = L.latLngBounds(boundsPoints.map(p => [p.lat, p.lng]));
                 if (bounds.isValid()) map.fitBounds(bounds);
@@ -1298,10 +1249,8 @@
             if (!selectedRouteName) { alert("Selecciona una ruta para borrar."); return; }
             if (confirm(`¿Estás seguro de que quieres borrar la ruta "${selectedRouteName}"?`)) {
                 localStorage.removeItem(CACHE_PREFIX + selectedRouteName);
-                let queue = getRouteQueue();
-                queue = queue.filter(name => name !== selectedRouteName);
-                saveRouteQueue(queue);
-                loadSavedRoutesLists(); 
+                let queue = getRouteQueue(); queue = queue.filter(name => name !== selectedRouteName);
+                saveRouteQueue(queue); loadSavedRoutesLists(); 
                 alert(`Ruta "${selectedRouteName}" borrada.`);
             }
         }
@@ -1311,10 +1260,8 @@
             const routeToQueueSelect = document.getElementById('routeToQueue');
             const currentSavedRouteValue = savedRoutesSelect.value;
             const currentQueueRouteValue = routeToQueueSelect.value;
-
             savedRoutesSelect.innerHTML = ""; routeToQueueSelect.innerHTML = "";
-            let hasRoutes = false;
-            const routeNames = [];
+            let hasRoutes = false; const routeNames = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key.startsWith(CACHE_PREFIX)) routeNames.push(key.substring(CACHE_PREFIX.length));
@@ -1330,8 +1277,7 @@
             if (!hasRoutes) {
                  const option = document.createElement('option');
                  option.textContent = "No hay rutas guardadas"; option.disabled = true;
-                 savedRoutesSelect.appendChild(option.cloneNode(true));
-                 routeToQueueSelect.appendChild(option);
+                 savedRoutesSelect.appendChild(option.cloneNode(true)); routeToQueueSelect.appendChild(option);
             } else {
                 if (routeNames.includes(currentSavedRouteValue)) savedRoutesSelect.value = currentSavedRouteValue;
                 if (routeNames.includes(currentQueueRouteValue)) routeToQueueSelect.value = currentQueueRouteValue;
@@ -1346,69 +1292,51 @@
             }
             const turnSchedule = point.turnSchedules[turnNumber - 1];
             if (point.isFirstEndpoint) { // P1
-                return {
-                    departureIDA: turnSchedule.scheduledDeparture, 
-                    arrivalVUELTA: turnSchedule.scheduledArrival,
-                    arrivalIDA: null, // P1 doesn't have IDA arrival in this context
-                    departureVUELTA: null // P1 doesn't have VUELTA departure in this context
-                };
+                return { departureIDA: turnSchedule.scheduledDeparture, arrivalVUELTA: turnSchedule.scheduledArrival, arrivalIDA: null, departureVUELTA: null };
             } else { // P2
-                return {
-                    arrivalIDA: turnSchedule.scheduledArrival,     
-                    departureVUELTA: turnSchedule.scheduledDeparture,
-                    departureIDA: null, // P2 doesn't have IDA departure
-                    arrivalVUELTA: null // P2 doesn't have VUELTA arrival
-                };
+                return { arrivalIDA: turnSchedule.scheduledArrival, departureVUELTA: turnSchedule.scheduledDeparture, departureIDA: null, arrivalVUELTA: null };
             }
         }
 
-
         function setupCurrentLegForTracking() {
             trackingState.activeLegPoints = [];
-            const legPathPointsSource = getPathPointsForPolyline(trackingState.currentFlag); // These are from routePoints
-            if(legPathPointsSource.length === 0) {
-                console.error("No points found for current leg in tracking.");
-                return false;
-            }
+            const legPathPointsSource = getPathPointsForPolyline(trackingState.currentFlag); 
+            if(legPathPointsSource.length === 0) { console.error("No points found for current leg in tracking."); return false; }
 
             const lineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
             const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint);
             const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
 
             if (!p1 || !p2 || !p1.turnSchedules || !p2.turnSchedules || 
-                trackingState.currentTurn > p1.turnSchedules.length || 
-                trackingState.currentTurn > p2.turnSchedules.length ) {
-                alert(`Horarios de Puntas de Línea incompletos para la vuelta ${trackingState.currentTurn}.`);
-                return false;
+                trackingState.currentTurn > p1.turnSchedules.length || trackingState.currentTurn > p2.turnSchedules.length ) {
+                alert(`Horarios de Puntas de Línea incompletos para la vuelta ${trackingState.currentTurn}.`); return false;
             }
-
             const p1TimesForCurrentTurn = getEndpointTimesForTurn(p1, trackingState.currentTurn);
             const p2TimesForCurrentTurn = getEndpointTimesForTurn(p2, trackingState.currentTurn);
             
             trackingState.activeLegPoints = legPathPointsSource.map(legPoint => {
-                const originalPoint = routePoints.find(rp => rp.id === legPoint.id); // Should always find it
+                const originalPoint = routePoints.find(rp => rp.id === legPoint.id);
                 if (!originalPoint) return { ...legPoint, effectiveScheduledTime: null }; 
-
                 let effTime = null;
                 if (originalPoint.pointCategory === 'lineEndpoint') {
-                    if (trackingState.currentFlag === routeSettings.flagNameIda) { // IDA leg
+                    if (trackingState.currentFlag === routeSettings.flagNameIda) { 
                         if (originalPoint.id === p1?.id) effTime = p1TimesForCurrentTurn.departureIDA;
                         else if (originalPoint.id === p2?.id) effTime = p2TimesForCurrentTurn.arrivalIDA;
-                    } else { // VUELTA leg
+                    } else { 
                         if (originalPoint.id === p2?.id) effTime = p2TimesForCurrentTurn.departureVUELTA;
                         else if (originalPoint.id === p1?.id) effTime = p1TimesForCurrentTurn.arrivalVUELTA;
                     }
                 } else if (originalPoint.pointCategory === 'intermediateStop') {
-                    effTime = (trackingState.currentFlag === routeSettings.flagNameIda) ? originalPoint.times.scheduledIDA : originalPoint.times.scheduledVUELTA;
-                }
+                    // Intermediate stops now only have one scheduledTime, relevant to their flagAffinity.
+                    // We already filtered legPathPointsSource by trackingState.currentFlag, so flagAffinity matches.
+                    effTime = originalPoint.scheduledTime;
+                } // Waypoints have no effectiveScheduledTime
                 return { ...originalPoint, effectiveScheduledTime: effTime ? new Date(effTime) : null };
             });
 
-
             if (trackingState.activeLegPoints.length > 0 && 
                 (!trackingState.activeLegPoints[0].effectiveScheduledTime || 
-                 !trackingState.activeLegPoints[trackingState.activeLegPoints.length -1].effectiveScheduledTime)
-                ) {
+                 !trackingState.activeLegPoints[trackingState.activeLegPoints.length -1].effectiveScheduledTime) ) {
                  alert(`Horarios incompletos para los extremos de la bandera ${trackingState.currentFlag} (Vuelta ${trackingState.currentTurn}).`);
                  return false;
             }
@@ -1423,32 +1351,24 @@
             const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
             if (!p1 || !p2){ alert("P1 y/o P2 no están correctamente definidos."); return; }
             
-            // Check if all turns have schedules for P1 and P2
             for (let i = 0; i < routeSettings.totalTurns; i++) {
-                const turnNum = i + 1;
-                const p1t = getEndpointTimesForTurn(p1, turnNum);
-                const p2t = getEndpointTimesForTurn(p2, turnNum);
+                const turnNum = i + 1; const p1t = getEndpointTimesForTurn(p1, turnNum); const p2t = getEndpointTimesForTurn(p2, turnNum);
                 if (!p1t.departureIDA || !p1t.arrivalVUELTA || !p2t.arrivalIDA || !p2t.departureVUELTA) {
-                    alert(`Horarios incompletos para P1/P2 en Vuelta ${turnNum}. No se puede iniciar seguimiento.`);
-                    return;
+                    alert(`Horarios incompletos para P1/P2 en Vuelta ${turnNum}. No se puede iniciar seguimiento.`); return;
                 }
             }
             
             isTracking = true;
             trackingState.currentTurn = 1;
-            trackingState.currentFlag = routeSettings.flagNameIda; 
+            trackingState.currentFlag = document.getElementById('startTrackingFlag').value; // Get selected flag
             currentSegmentStartIndex = 0; 
             
-            if (!setupCurrentLegForTracking()) {
-                stopTracking(false, "Error configurando pierna inicial de seguimiento."); return;
-            }
+            if (!setupCurrentLegForTracking()) { stopTracking(false, "Error configurando pierna inicial."); return; }
             
             document.getElementById('startTrackingBtn').style.display = 'none';
             document.getElementById('stopTrackingBtn').style.display = 'inline-block';
             document.getElementById('routeCreationSection').style.display = 'none'; 
-            updateTrackingStatusDisplay();
-            redrawRouteLine(); 
-            updateWaypointMarkersVisibility(false); 
+            updateTrackingStatusDisplay(); redrawRouteLine(); updateWaypointMarkersVisibility(false); 
 
             if (navigator.geolocation) {
                 trackingIntervalId = navigator.geolocation.watchPosition(
@@ -1459,9 +1379,7 @@
                     map.setView([trackingState.activeLegPoints[0].lat, trackingState.activeLegPoints[0].lng], 16); 
                 }
                 highlightNextStopInList(); 
-            } else {
-                alert("Geolocalización no disponible."); stopTracking(false); 
-            }
+            } else { alert("Geolocalización no disponible."); stopTracking(false); }
             updateManualNavButtons();
         }
 
@@ -1473,34 +1391,24 @@
             document.getElementById('routeCreationSection').style.display = 'block'; 
             if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
             
-            currentEditingFlagView = routeSettings.flagNameIda;
-            const editFlagBtn = document.getElementById('toggleEditingFlagViewBtn');
-            if (editFlagBtn) editFlagBtn.textContent = `Vista Trazado: ${routeSettings.flagNameIda}`;
-            
-            trackingState.currentFlag = routeSettings.flagNameIda; 
-            redrawRouteLine(); updateStopsList(); 
-            currentSegmentStartIndex = 0; 
-            updateManualNavButtons();
-            setActiveMode(null); 
-            updateWaypointMarkersVisibility(false); 
-
+            // currentEditingFlagView remains as it was. No need to reset to IDA specifically.
+            // trackingState.currentFlag will be reset if tracking starts again.
+            redrawRouteLine(); // This will show IDA/VUELTA edit lines
+            updateStopsList(); currentSegmentStartIndex = 0; 
+            updateManualNavButtons(); setActiveMode(null); updateWaypointMarkersVisibility(false); 
 
             if (completedNaturally) {
                 document.getElementById('trackingInfoDisplay').textContent = "RUTA COMPLETADA";
                 alert("Ruta completada!"); checkRouteQueue();
             } else {
                 const msg = "Seguimiento detenido." + (reason ? " Razón: " + reason : "");
-                console.log(msg); if (reason && reason.startsWith("Error")) alert(msg); // Only alert actual errors
+                console.log(msg); if (reason && reason.startsWith("Error")) alert(msg);
                 document.getElementById('trackingInfoDisplay').textContent = "SEGUIMIENTO DETENIDO";
             }
         }
         
         function updateTrackingStatusDisplay() {
-            if (!isTracking) {
-                document.getElementById('statusDisplay').style.display = 'none';
-                return;
-            }
-
+            if (!isTracking) { document.getElementById('statusDisplay').style.display = 'none'; return; }
             document.getElementById('statusDisplay').style.display = 'block';
             document.getElementById('trackingInfoDisplay').textContent = 
                 `Vuelta: ${trackingState.currentTurn}/${routeSettings.totalTurns} - Bandera: ${trackingState.currentFlag}`;
@@ -1508,17 +1416,12 @@
 
         function updateManualNavButtons() {
             const manualNav = document.getElementById('manualStopNav').checked;
-            const prevBtn = document.getElementById('prevStopBtn');
-            const nextBtn = document.getElementById('nextStopBtn');
-            
+            const prevBtn = document.getElementById('prevStopBtn'); const nextBtn = document.getElementById('nextStopBtn');
             if (isTracking && manualNav && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0) {
-                prevBtn.style.display = 'inline-block';
-                nextBtn.style.display = 'inline-block';
+                prevBtn.style.display = 'inline-block'; nextBtn.style.display = 'inline-block';
                 prevBtn.disabled = currentSegmentStartIndex === 0;
-                nextBtn.disabled = currentSegmentStartIndex >= trackingState.activeLegPoints.length - 2; // -2 because target is index+1
-            } else {
-                prevBtn.style.display = 'none'; nextBtn.style.display = 'none';
-            }
+                nextBtn.disabled = currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1; // -1 because target could be last point.
+            } else { prevBtn.style.display = 'none'; nextBtn.style.display = 'none'; }
         }
 
         function handlePositionUpdate(position) {
@@ -1526,37 +1429,59 @@
             const { latitude, longitude, speed } = position.coords;
             if (!userMarker) userMarker = L.marker([latitude, longitude], { icon: createUserLocationIcon() }).addTo(map);
             else userMarker.setLatLng([latitude, longitude]);
-            // map.panTo([latitude, longitude], {animate: true, duration: 0.5}); // Can be annoying if map is manually panned
             document.getElementById('speedDisplay').textContent = `Velocidad: ${(speed ? (speed * 3.6) : 0).toFixed(1)} KM/H`;
 
-            if (!trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) {
-                return; 
+            if (!trackingState.activeLegPoints || trackingState.activeLegPoints.length === 0) return;
+            
+            // If currentSegmentStartIndex points beyond the last actual point, leg might be over.
+            // The target point for arrival check is currentSegmentStartIndex + 1, up to length - 1.
+            const targetPointIndex = currentSegmentStartIndex + 1;
+
+            if (targetPointIndex >= trackingState.activeLegPoints.length) { // Already past the last point of the leg
+                // This state should ideally be caught by advanceToNextActivePoint / handleEndOfLeg
+                // but as a safeguard:
+                if(!document.getElementById('manualStopNav').checked) handleEndOfLeg();
+                return;
             }
             
             const manualNav = document.getElementById('manualStopNav').checked;
             let advancedThisTick = false;
 
             if (!manualNav) {
-                const currentTargetPoint = trackingState.activeLegPoints[currentSegmentStartIndex + 1];
+                const currentTargetPoint = trackingState.activeLegPoints[targetPointIndex];
+                // Only auto-advance if target is NOT a waypoint (i.e., it's a stop or endpoint)
                 if (currentTargetPoint && currentTargetPoint.pointCategory !== 'waypoint') { 
                     const distanceToTarget = L.latLng(latitude, longitude).distanceTo(L.latLng(currentTargetPoint.lat, currentTargetPoint.lng));
                     if (distanceToTarget < currentStopRadius) {
                         advanceToNextActivePoint(); advancedThisTick = true;
                     }
+                } else if (currentTargetPoint && currentTargetPoint.pointCategory === 'waypoint') {
+                    // For waypoints, we might auto-advance if very close, or rely on manual/time deviation logic
+                    // For now, let's assume waypoints are passed "silently" unless manual nav.
+                    // Or, if the *next* point after waypoint is reached.
+                    // This needs careful thought. Simplest: waypoints don't trigger auto-advance.
                 }
             }
-            if (!advancedThisTick && currentSegmentStartIndex < trackingState.activeLegPoints.length -1 && trackingState.activeLegPoints[currentSegmentStartIndex+1]) { 
+            
+            // If not advanced, or if next point exists, calculate deviation
+            if (!advancedThisTick && targetPointIndex < trackingState.activeLegPoints.length) { 
+                 calculateTimeDeviation(position);
+            } else if (advancedThisTick && currentSegmentStartIndex + 1 < trackingState.activeLegPoints.length) {
+                 // If advanced, and there's still a next point, calc deviation to the new next point
+                 calculateTimeDeviation(position);
+            } else if (!advancedThisTick && targetPointIndex >= trackingState.activeLegPoints.length -1) {
+                // At the last point, deviation is against it.
                  calculateTimeDeviation(position);
             }
         }
         
         function advanceToNextActivePoint() { 
             currentSegmentStartIndex++;
-            if (!trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) { 
+            if (!trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) { // -1 as currentSegmentStartIndex refers to start of segment
                 handleEndOfLeg();
             } else {
                 highlightNextStopInList(); updateManualNavButtons();
-                if (lastKnownPosition && trackingState.activeLegPoints[currentSegmentStartIndex+1]) calculateTimeDeviation(lastKnownPosition);
+                if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition);
             }
         }
 
@@ -1565,22 +1490,18 @@
                 trackingState.currentFlag = routeSettings.flagNameVuelta;
             } else {
                 trackingState.currentTurn++;
-                if (trackingState.currentTurn > routeSettings.totalTurns) {
-                    stopTracking(true); return;
-                }
+                if (trackingState.currentTurn > routeSettings.totalTurns) { stopTracking(true); return; }
                 trackingState.currentFlag = routeSettings.flagNameIda;
             }
-
             currentSegmentStartIndex = 0;
-            if (!setupCurrentLegForTracking()) {
-                 stopTracking(false, `Error configurando pierna ${trackingState.currentFlag} (Vuelta ${trackingState.currentTurn}).`); return;
-            }
+            if (!setupCurrentLegForTracking()) { stopTracking(false, `Error configurando pierna ${trackingState.currentFlag} (Vuelta ${trackingState.currentTurn}).`); return; }
             updateTrackingStatusDisplay(); redrawRouteLine(); highlightNextStopInList();
             updateManualNavButtons(); 
-            if (lastKnownPosition && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 1 && trackingState.activeLegPoints[1]) {
+            if (lastKnownPosition && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 1) { // Check if there is a next point
                  calculateTimeDeviation(lastKnownPosition);
+            } else if (lastKnownPosition && trackingState.activeLegPoints && trackingState.activeLegPoints.length === 1) { // Only one point in leg (the endpoint)
+                 calculateTimeDeviation(lastKnownPosition); // Calculate deviation against this single point
             }
-            
             if (trackingState.activeLegPoints.length > 0 && trackingState.activeLegPoints[0]) {
                 map.setView([trackingState.activeLegPoints[0].lat, trackingState.activeLegPoints[0].lng], map.getZoom()); 
             }
@@ -1590,10 +1511,10 @@
             if (!isTracking || currentSegmentStartIndex === 0) return;
             currentSegmentStartIndex--;
             highlightNextStopInList(); updateManualNavButtons();
-            if (lastKnownPosition && trackingState.activeLegPoints && trackingState.activeLegPoints[currentSegmentStartIndex+1]) calculateTimeDeviation(lastKnownPosition);
+            if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition);
         }
         function goToNextActivePoint() { 
-            if (!isTracking || !trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) return;
+            if (!isTracking || !trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) return; // -1 because it's start of segment
             advanceToNextActivePoint();
         }
 
@@ -1601,31 +1522,33 @@
             document.querySelectorAll('#stopsList .stop-item').forEach(item => item.classList.remove('next-stop-highlight'));
             let nextStopName = "N/A";
 
-            if (isTracking && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0 && 
-                currentSegmentStartIndex < trackingState.activeLegPoints.length - 1) {
-                
+            if (isTracking && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0) {
                 let displayableNextTarget = null;
+                // Find the next non-waypoint stop to display as "Próxima Parada"
                 for(let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++){
                     if(trackingState.activeLegPoints[i].pointCategory !== 'waypoint'){
                         displayableNextTarget = trackingState.activeLegPoints[i];
                         break;
                     }
                 }
-                if (!displayableNextTarget && trackingState.activeLegPoints.length > currentSegmentStartIndex +1 ) {
-                     displayableNextTarget = trackingState.activeLegPoints[currentSegmentStartIndex + 1];
+                // If all remaining are waypoints, then the "next stop" is effectively the end of the leg (last point)
+                if (!displayableNextTarget && trackingState.activeLegPoints.length > 0) {
+                    displayableNextTarget = trackingState.activeLegPoints[trackingState.activeLegPoints.length - 1];
                 }
-
 
                 if(displayableNextTarget) {
                     nextStopName = displayableNextTarget.name;
                     const listPoints = getSortedRoutePointsForDisplay(); 
                     const displayIndexInList = listPoints.findIndex(dp => dp.id === displayableNextTarget.id);
-                    
                     if (displayIndexInList !== -1 && document.querySelectorAll('#stopsList .stop-item')[displayIndexInList]) {
                         document.querySelectorAll('#stopsList .stop-item')[displayIndexInList].classList.add('next-stop-highlight');
                     }
+                } else if (trackingState.activeLegPoints.length > 0 && currentSegmentStartIndex === trackingState.activeLegPoints.length -1) {
+                    // If at the very last point of the leg
+                    nextStopName = "Fin de Bandera";
                 }
-            } else if (!isTracking) {
+
+            } else if (!isTracking) { // Editing mode
                 const displayPoints = getSortedRoutePointsForDisplay();
                 if (displayPoints.length > 0 && displayPoints[0].pointCategory !== 'waypoint') {
                      nextStopName = displayPoints[0].name;
@@ -1635,78 +1558,103 @@
         }
 
         function calculateTimeDeviation(currentUserGeoPosition) { 
-            if (!isTracking || !trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) {
-                document.getElementById('timeDeviation').textContent = "00:00";
+            if (!isTracking || !trackingState.activeLegPoints || trackingState.activeLegPoints.length === 0) {
+                document.getElementById('timeDeviation').textContent = "---";
                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
                 return;
             }
 
-            const pointA = trackingState.activeLegPoints[currentSegmentStartIndex];
-            const pointB = trackingState.activeLegPoints[currentSegmentStartIndex + 1];
+            // Find actual point A (last scheduled stop/endpoint passed or at)
+            let actualPointA = null;
+            for (let i = currentSegmentStartIndex; i >= 0; i--) {
+                const p = trackingState.activeLegPoints[i];
+                if (p && p.pointCategory !== 'waypoint' && p.effectiveScheduledTime) {
+                    actualPointA = p;
+                    break;
+                }
+            }
 
-            if (!pointA || !pointB || !pointA.effectiveScheduledTime || !pointB.effectiveScheduledTime ||
-                pointA.pointCategory === 'waypoint' || pointB.pointCategory === 'waypoint') { 
-                document.getElementById('timeDeviation').textContent = "N/A_T";
+            // Find actual point B (next scheduled stop/endpoint to reach)
+            let actualPointB = null;
+            for (let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++) {
+                const p = trackingState.activeLegPoints[i];
+                if (p && p.pointCategory !== 'waypoint' && p.effectiveScheduledTime) {
+                    actualPointB = p;
+                    break;
+                }
+            }
+
+            if (!actualPointA && !actualPointB) { // No scheduled points in leg at all (e.g. leg of only waypoints)
+                document.getElementById('timeDeviation').textContent = "---";
                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
                 return;
             }
-            const scheduledTimeA = new Date(pointA.effectiveScheduledTime);
-            const scheduledTimeB = new Date(pointB.effectiveScheduledTime);
+            
+            // If current position is before the first scheduled point (actualPointA)
+            // or if actualPointA is the only scheduled point found and we are targeting it.
+            if (actualPointA && (!actualPointB || actualPointA.id === actualPointB?.id)) {
+                const scheduledTimeA = new Date(actualPointA.effectiveScheduledTime);
+                const currentTime = new Date();
+                const deviationMillis = scheduledTimeA.getTime() - currentTime.getTime();
+                displayDeviation(deviationMillis);
+                return;
+            }
+            
+            // If current position is after the last scheduled point (actualPointB already passed, and it was the last one)
+            // This case is less likely if advanceToNextActivePoint works correctly, but as a fallback.
+            // Or if actualPointB is the current target.
+            if (actualPointB && !actualPointA) { // Should not happen if logic above is correct, means past all points
+                const scheduledTimeB = new Date(actualPointB.effectiveScheduledTime);
+                const currentTime = new Date();
+                const deviationMillis = scheduledTimeB.getTime() - currentTime.getTime();
+                displayDeviation(deviationMillis);
+                return;
+            }
+            
+            // Standard case: between actualPointA and actualPointB
+            if (!actualPointA || !actualPointB) { // Fallback if one is missing but not covered above
+                 document.getElementById('timeDeviation').textContent = "---";
+                 document.getElementById('timeDeviation').style.color = "#FFFFFF";
+                 return;
+            }
+
+
+            const scheduledTimeA = new Date(actualPointA.effectiveScheduledTime);
+            const scheduledTimeB = new Date(actualPointB.effectiveScheduledTime);
             const segmentTotalScheduledMillis = scheduledTimeB.getTime() - scheduledTimeA.getTime();
 
-            if (segmentTotalScheduledMillis <= 0 && !(scheduledTimeA.getTime() === scheduledTimeB.getTime() && pointA.id === pointB.id) ) { 
-                document.getElementById('timeDeviation').textContent = "ERR_DUR";
-                document.getElementById('timeDeviation').style.color = "#FFA500"; // Orange for duration error
+            if (segmentTotalScheduledMillis < 0) { // Time B is before Time A - data error
+                document.getElementById('timeDeviation').textContent = "ERR_SCH"; // Schedule Error
+                document.getElementById('timeDeviation').style.color = "#FFA500";
+                return;
+            }
+            if (segmentTotalScheduledMillis === 0) { // A and B scheduled at same time
+                const currentTime = new Date();
+                const deviationMillis = scheduledTimeA.getTime() - currentTime.getTime(); // Deviate against A (or B)
+                displayDeviation(deviationMillis);
                 return;
             }
 
-            const latLngA = L.latLng(pointA.lat, pointA.lng);
-            const latLngB = L.latLng(pointB.lat, pointB.lng);
+            const latLngA = L.latLng(actualPointA.lat, actualPointA.lng);
+            const latLngB = L.latLng(actualPointB.lat, actualPointB.lng);
             const currentUserLatLng = L.latLng(currentUserGeoPosition.coords.latitude, currentUserGeoPosition.coords.longitude);
             const distanceTotalSegment = latLngA.distanceTo(latLngB);
             let progressPercentage;
 
             if (distanceTotalSegment < 1.0) { 
-                // If segment is tiny, assume progress is 0 unless very close to B
-                const distToBForTiny = currentUserLatLng.distanceTo(latLngB);
-                progressPercentage = (distToBForTiny < 5.0 && distanceTotalSegment > 0.1) ? 1.0 : 0.0;
-                 // For tiny segments, deviation is essentially against the scheduled time of A or B
-                const now = new Date();
-                let expectedTimeAtCurrentPosMillis;
-                // If segment is point-like or duration is zero, compare to B if past midpoint of A's time, else A
-                if(segmentTotalScheduledMillis === 0 || now.getTime() > (scheduledTimeA.getTime() + segmentTotalScheduledMillis / 2)){
-                    expectedTimeAtCurrentPosMillis = scheduledTimeB.getTime();
-                } else {
-                    expectedTimeAtCurrentPosMillis = scheduledTimeA.getTime();
+                progressPercentage = 0.0; // Effectively at point A for timing if segment is negligible
+            } else {
+                const distToA = currentUserLatLng.distanceTo(latLngA); 
+                const distToB = currentUserLatLng.distanceTo(latLngB); 
+
+                if (distToA < 10.0) progressPercentage = 0.0; 
+                else if (distToB < 10.0) progressPercentage = 1.0; 
+                else if (distToA > distanceTotalSegment && distToA > distToB) progressPercentage = 1.0; // Beyond B
+                else if (distToB > distanceTotalSegment && distToB > distToA) progressPercentage = 0.0; // Before A
+                else { 
+                    const dist_A_to_P_prime_on_AB = (Math.pow(distanceTotalSegment, 2) + Math.pow(distToA, 2) - Math.pow(distToB, 2)) / (2 * distanceTotalSegment);
+                    progressPercentage = dist_A_to_P_prime_on_AB / distanceTotalSegment;
                 }
-                const deviationMillisSpecial = expectedTimeAtCurrentPosMillis - now.getTime();
-                displayDeviation(deviationMillisSpecial);
-                return;
-            }
-            
-            // Projection logic (simplified)
-            const distToA = currentUserLatLng.distanceTo(latLngA); 
-            const distToB = currentUserLatLng.distanceTo(latLngB); 
-
-            if (distToA < 10.0) progressPercentage = 0.0; 
-            else if (distToB < 10.0) progressPercentage = 1.0; 
-            // Check if user is "beyond" B relative to A->B vector
-            else if (distToA > distanceTotalSegment && distToA > distToB) progressPercentage = 1.0;
-            // Check if user is "before" A relative to A->B vector
-            else if (distToB > distanceTotalSegment && distToB > distToA) progressPercentage = 0.0;
-            else { 
-                 // Using a simplified approach: proportion of distance along the line segment
-                // This is an approximation and doesn't handle being off-route well.
-                // A more robust method uses vector projection.
-                // Simplified: (TotalDist - DistToB) / TotalDist
-                // This assumes user is roughly on the segment between A and B
-                let projectedProgress = (distanceTotalSegment - distToB) / distanceTotalSegment;
-                progressPercentage = Math.max(0, Math.min(1, projectedProgress));
-                 // If distances suggest user is closer to A than projection indicates, or vice versa, cap it.
-                 // Example: if dist_A_to_P_prime_on_AB logic from previous version is preferred:
-                 const dist_A_to_P_prime_on_AB = (Math.pow(distanceTotalSegment, 2) + Math.pow(distToA, 2) - Math.pow(distToB, 2)) / (2 * distanceTotalSegment);
-                 progressPercentage = dist_A_to_P_prime_on_AB / distanceTotalSegment;
-
             }
             progressPercentage = Math.max(0, Math.min(1, progressPercentage)); 
 
@@ -1716,6 +1664,7 @@
             const deviationMillis = expectedTimeAtCurrentPosition.getTime() - currentTime.getTime();
             displayDeviation(deviationMillis);
         }
+
 
         function displayDeviation(deviationMillis) { 
             const absMillis = Math.abs(deviationMillis);
@@ -1759,76 +1708,41 @@
                 const nextRouteName = queue.shift(); saveRouteQueue(queue); 
                 if (confirm(`Ruta finalizada. ¿Iniciar siguiente ruta de la cola: "${nextRouteName}"?`)) {
                     const savedRoutesSelect = document.getElementById('savedRoutes');
-                    // Check if the route name exists in the dropdown
-                    let routeExists = false;
-                    for (let i = 0; i < savedRoutesSelect.options.length; i++) {
-                        if (savedRoutesSelect.options[i].value === nextRouteName) {
-                            routeExists = true;
-                            break;
-                        }
-                    }
-
+                    let routeExists = Array.from(savedRoutesSelect.options).some(opt => opt.value === nextRouteName);
                     if (routeExists) {
-                        savedRoutesSelect.value = nextRouteName; 
-                        loadRoute(); // This function is synchronous for data loading
-                        
-                        // Use a timeout to ensure DOM updates from loadRoute (if any) are processed
-                        // and then attempt to start tracking.
+                        savedRoutesSelect.value = nextRouteName; loadRoute(); 
                         setTimeout(() => { 
-                            // Re-validate P1/P2 and their schedules for all turns for the newly loaded route
                             const lineEndpoints = routePoints.filter(p => p.pointCategory === 'lineEndpoint');
-                            const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint);
-                            const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
+                            const p1 = lineEndpoints.find(ep => ep.isFirstEndpoint); const p2 = lineEndpoints.find(ep => !ep.isFirstEndpoint);
                             let canStart = p1 && p2;
                             if (canStart) {
                                 for (let i = 0; i < routeSettings.totalTurns; i++) {
-                                    const turnNum = i + 1;
-                                    const p1t = getEndpointTimesForTurn(p1, turnNum);
-                                    const p2t = getEndpointTimesForTurn(p2, turnNum);
-                                    if (!p1t.departureIDA || !p1t.arrivalVUELTA || !p2t.arrivalIDA || !p2t.departureVUELTA) {
-                                        canStart = false; break;
-                                    }
+                                    const turnNum = i + 1; const p1t = getEndpointTimesForTurn(p1, turnNum); const p2t = getEndpointTimesForTurn(p2, turnNum);
+                                    if (!p1t.departureIDA || !p1t.arrivalVUELTA || !p2t.arrivalIDA || !p2t.departureVUELTA) { canStart = false; break; }
                                 }
                             }
-
-                            if (canStart) {
-                                startTracking();
-                            } else {
-                                alert(`Error al cargar la ruta "${nextRouteName}" de la cola o sus horarios son inválidos. Verifique la configuración de P1/P2 para todas las vueltas.`);
-                            }
+                            if (canStart) startTracking();
+                            else alert(`Error al cargar la ruta "${nextRouteName}" de la cola o sus horarios son inválidos.`);
                         }, 500); 
-                    } else {
-                        alert(`La ruta "${nextRouteName}" de la cola ya no existe o no se pudo encontrar.`);
-                    }
-                } else {
-                    alert("Siguiente ruta de la cola no iniciada.");
-                }
+                    } else alert(`La ruta "${nextRouteName}" de la cola ya no existe.`);
+                } else alert("Siguiente ruta de la cola no iniciada.");
             }
         }
-
 
         function updateGlobalStopRadiusSettings() { 
             const newRadius = parseInt(document.getElementById('stopRadiusInput').value, 10);
             if (!isNaN(newRadius) && newRadius >= 10 && newRadius <= 500) {
                 currentStopRadius = newRadius;
-                routePoints.forEach(point => {
-                    if (point.radiusCircle) point.radiusCircle.setRadius(currentStopRadius);
-                });
+                routePoints.forEach(point => { if (point.radiusCircle) point.radiusCircle.setRadius(currentStopRadius); });
             } else {
-                alert("Radio inválido (10-500m).");
-                document.getElementById('stopRadiusInput').value = currentStopRadius;
+                alert("Radio inválido (10-500m)."); document.getElementById('stopRadiusInput').value = currentStopRadius;
             }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            initMap(); 
-            loadSavedRoutesLists(); 
-            updateStopsList(); 
-            updateManualNavButtons(); 
-            setActiveMode(null); 
-            updateTrackingStatusDisplay();
+            initMap(); loadSavedRoutesLists(); updateStopsList(); 
+            updateManualNavButtons(); setActiveMode(null); updateTrackingStatusDisplay();
         });
-
     </script>
 </body>
 </html>
