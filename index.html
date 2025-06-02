@@ -775,6 +775,7 @@
             }
         }
         
+        // LA TRAZA DIBUJADA AZUL/ROJA DEBE SEGUIR A LOS PUNTOS DE PASO Y A LAS PARADAS INTERMEDIAS... SIEMPRE.
         function getPathPointsForPolyline(flagNameToUse) {
             const allPointsSorted = [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex);
             if (allPointsSorted.length < 1) return []; // No points, no path
