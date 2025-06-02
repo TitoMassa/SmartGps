@@ -676,9 +676,10 @@
             } else if (currentlyEditingPoint.pointCategory === 'intermediateStop') {
                 const timeValue = document.getElementById('pointScheduledTimeIntermediate').value;
                 currentlyEditingPoint.scheduledTime = timeValue ? new Date(timeValue) : null;
-                if (timeValue && isNaN(currentlyEditingPoint.scheduledTime.getTime())) {
+                if (timeValue && isNaN(currentlyEditingPoint.scheduledTime?.getTime())) { // Added ?. for safety
                      alert("Formato de fecha/hora inválido para Parada Intermedia.");
-                     currentlyEditingPoint.scheduledTime = null; return;
+                     currentlyEditingPoint.scheduledTime = null; 
+                     // Do not return here if autoCalcTimes might fix it or if other updates are needed
                 }
             }
             
@@ -840,7 +841,7 @@
             if (lineEndpoints.length < 2) { 
                 return allPointsSorted.filter(p => 
                     p.pointCategory !== 'intermediateStop' || p.flagAffinity === flagNameToUse
-                );
+                ).map(p => ({...p})); // Return copies
             }
 
             const p1 = lineEndpoints.find(p => p.isFirstEndpoint);
@@ -848,7 +849,7 @@
             if (!p1 || !p2) { 
                 return allPointsSorted.filter(p => 
                     p.pointCategory !== 'intermediateStop' || p.flagAffinity === flagNameToUse
-                );
+                ).map(p => ({...p})); // Return copies
             }
 
             const p1ActualIndexInSortedArray = allPointsSorted.findIndex(p => p.id === p1.id);
@@ -879,7 +880,7 @@
                 p.pointCategory === 'lineEndpoint' || 
                 p.pointCategory === 'waypoint' ||
                 (p.pointCategory === 'intermediateStop' && p.flagAffinity === flagNameToUse)
-            );
+            ).map(p => ({...p})); // Return copies
         }
 
 
@@ -1307,22 +1308,32 @@
             const p2TimesForCurrentTurn = getEndpointTimesForTurn(p2_ep, trackingState.currentTurn);
             
             trackingState.activeLegPoints = legPathPointsSource.map(legPoint => {
-                const originalPoint = routePoints.find(rp => rp.id === legPoint.id);
-                if (!originalPoint) return { ...legPoint, effectiveScheduledTime: null }; 
+                const originalPoint = routePoints.find(rp => rp.id === legPoint.id); // Find original to ensure it's not a stale copy
+                if (!originalPoint) return { ...legPoint, effectiveScheduledTime: null }; // Should ideally not happen if legPathPointsSource is from routePoints
+                
                 let effTime = null;
                 if (originalPoint.pointCategory === 'lineEndpoint') {
                     if (trackingState.currentFlag === routeSettings.flagNameIda) { 
                         if (originalPoint.id === p1_ep?.id) effTime = p1TimesForCurrentTurn.departureIDA;
                         else if (originalPoint.id === p2_ep?.id) effTime = p2TimesForCurrentTurn.arrivalIDA;
-                    } else { 
+                    } else { // VUELTA
                         if (originalPoint.id === p2_ep?.id) effTime = p2TimesForCurrentTurn.departureVUELTA;
                         else if (originalPoint.id === p1_ep?.id) effTime = p1TimesForCurrentTurn.arrivalVUELTA;
                     }
                 } else if (originalPoint.pointCategory === 'intermediateStop') {
+                    // For intermediate stops, the scheduledTime is relative to Turn 1.
+                    // For turns > 1, this needs to be adjusted based on the P1/P2 departure/arrival for *that* turn.
+                    // This logic is complex and currently not implemented to shift intermediate times per turn.
+                    // For now, using the Turn 1 based time, or null if not set.
                     effTime = originalPoint.scheduledTime ? new Date(originalPoint.scheduledTime) : null;
                 } 
-                return { ...originalPoint, effectiveScheduledTime: effTime };
+                // Create a new object for activeLegPoints to avoid modifying original routePoints
+                return { 
+                    ...originalPoint, // Copy all properties from the original point
+                    effectiveScheduledTime: effTime // Add/override with the calculated effective time for this leg/turn
+                };
             });
+
 
             if (trackingState.activeLegPoints.length > 0 && 
                 (!trackingState.activeLegPoints[0].effectiveScheduledTime || 
@@ -1424,61 +1435,106 @@
             else userMarker.setLatLng([latitude, longitude]);
             document.getElementById('speedDisplay').textContent = `Velocidad: ${(speed ? (speed * 3.6) : 0).toFixed(1)} KM/H`;
 
-            if (!trackingState.activeLegPoints || trackingState.activeLegPoints.length === 0) return;
-            
-            const targetPointIndex = currentSegmentStartIndex + 1;
-
-            if (targetPointIndex >= trackingState.activeLegPoints.length) { 
-                if(!document.getElementById('manualStopNav').checked) handleEndOfLeg();
-                return;
-            }
+            if (!isTracking || !trackingState.activeLegPoints || trackingState.activeLegPoints.length === 0) return;
             
             const manualNav = document.getElementById('manualStopNav').checked;
+
             if (!manualNav) {
-                const currentTargetPoint = trackingState.activeLegPoints[targetPointIndex];
-                if (currentTargetPoint && currentTargetPoint.pointCategory !== 'waypoint') { 
-                    const distanceToTarget = L.latLng(latitude, longitude).distanceTo(L.latLng(currentTargetPoint.lat, currentTargetPoint.lng));
-                    if (distanceToTarget < currentStopRadius) {
-                        advanceToNextActivePoint();
+                // Automatic Navigation Logic
+                if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) {
+                    // Already at or past the last point of the current leg definition.
+                    // This should trigger end of leg processing if not already done.
+                    handleEndOfLeg();
+                    if (!isTracking) return; // Stop if tracking ended
+                } else {
+                    // Not yet at the last point. Find the next relevant target.
+                    let nextRelevantTargetPoint = null;
+                    let nextRelevantTargetIndex = -1;
+
+                    // Search for the next non-waypoint from currentSegmentStartIndex + 1
+                    for (let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++) {
+                        if (trackingState.activeLegPoints[i].pointCategory !== 'waypoint') {
+                            nextRelevantTargetPoint = trackingState.activeLegPoints[i];
+                            nextRelevantTargetIndex = i;
+                            break;
+                        }
+                    }
+
+                    // If no non-waypoint found ahead, the "target" is the very last point of the leg.
+                    if (!nextRelevantTargetPoint) {
+                        if (currentSegmentStartIndex < trackingState.activeLegPoints.length - 1) { // Ensure there is a point after current
+                           nextRelevantTargetPoint = trackingState.activeLegPoints[trackingState.activeLegPoints.length - 1];
+                           nextRelevantTargetIndex = trackingState.activeLegPoints.length - 1;
+                        }
+                    }
+
+                    if (nextRelevantTargetPoint) {
+                        const distanceToTarget = L.latLng(latitude, longitude).distanceTo(L.latLng(nextRelevantTargetPoint.lat, nextRelevantTargetPoint.lng));
+                        
+                        if (distanceToTarget < currentStopRadius) {
+                            // Reached the target
+                            currentSegmentStartIndex = nextRelevantTargetIndex; // Update our position in the leg
+
+                            if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) {
+                                // This was the last point of the leg
+                                handleEndOfLeg();
+                                if (!isTracking) return; // Stop if tracking ended
+                            }
+                            // If not the last point, currentSegmentStartIndex is now at this intermediate target.
+                            // The next iteration of handlePositionUpdate will find the *next* relevant target.
+                        }
                     }
                 }
-            }
+            } // End of automatic navigation
             
-            calculateTimeDeviation(position);
-            highlightNextStopInList();
-            updateManualNavButtons();
+            // These should always run, regardless of manual/auto, as long as tracking is active
+            if (isTracking) { // Check isTracking again, as handleEndOfLeg might have changed it
+                calculateTimeDeviation(position);
+                highlightNextStopInList();
+                updateManualNavButtons();
+            }
         }
         
+        // This function is primarily for manual navigation's "Next" button.
+        // Auto-nav sets currentSegmentStartIndex directly.
         function advanceToNextActivePoint() { 
-            currentSegmentStartIndex++;
-            if (!trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) { 
+            if (currentSegmentStartIndex < trackingState.activeLegPoints.length - 1) {
+                currentSegmentStartIndex++;
+            }
+            
+            // Check if this advance takes us to/past the end of the leg
+            if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1 ) { 
                 handleEndOfLeg();
-            } else {
-                // highlightNextStopInList and updateManualNavButtons will be called by handlePositionUpdate
-                // or if this was a manual call, they should be called by the manual trigger.
             }
         }
 
         function handleEndOfLeg() {
+            if (!isTracking) return; // Avoid multiple calls if already stopping
+
             if (trackingState.currentFlag === routeSettings.flagNameIda) {
                 trackingState.currentFlag = routeSettings.flagNameVuelta;
             } else {
                 trackingState.currentTurn++;
-                if (trackingState.currentTurn > routeSettings.totalTurns) { stopTracking(true); return; }
+                if (trackingState.currentTurn > routeSettings.totalTurns) {
+                    stopTracking(true); // Route completed
+                    return; 
+                }
                 trackingState.currentFlag = routeSettings.flagNameIda;
             }
-            currentSegmentStartIndex = 0;
-            if (!setupCurrentLegForTracking()) { stopTracking(false, `Error configurando pierna ${trackingState.currentFlag} (Vuelta ${trackingState.currentTurn}).`); return; }
+            currentSegmentStartIndex = 0; // Reset for the new leg
+            if (!setupCurrentLegForTracking()) { 
+                stopTracking(false, `Error configurando pierna ${trackingState.currentFlag} (Vuelta ${trackingState.currentTurn}).`); 
+                return; 
+            }
             
             updateTrackingStatusDisplay(); 
             redrawRouteLine(); 
-            // highlightNextStopInList and updateManualNavButtons will be handled by the next position update or manual action.
-            // Calculate deviation for the new leg's start immediately if possible
+            
             if (lastKnownPosition && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0) {
-                 calculateTimeDeviation(lastKnownPosition);
+                 calculateTimeDeviation(lastKnownPosition); // Recalculate for new leg start
             }
-             highlightNextStopInList(); // Explicitly update here for immediate feedback
-             updateManualNavButtons();   // And manual buttons
+            highlightNextStopInList(); 
+            updateManualNavButtons();   
 
             if (trackingState.activeLegPoints.length > 0 && trackingState.activeLegPoints[0]) {
                 map.setView([trackingState.activeLegPoints[0].lat, trackingState.activeLegPoints[0].lng], map.getZoom()); 
@@ -1492,11 +1548,14 @@
             highlightNextStopInList(); 
             updateManualNavButtons();
         }
+
         function goToNextActivePoint() { 
             if (!isTracking || !trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) return; 
-            advanceToNextActivePoint(); // This might call handleEndOfLeg
-            // If not end of leg, ensure deviation and UI are updated
-            if (isTracking) { // Check if still tracking (might have stopped in handleEndOfLeg)
+            
+            advanceToNextActivePoint(); // This increments currentSegmentStartIndex and might call handleEndOfLeg
+            
+            // If still tracking after advance (i.e., not end of route)
+            if (isTracking) { 
                  if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition);
                  highlightNextStopInList();
                  updateManualNavButtons();
@@ -1509,25 +1568,24 @@
 
             if (isTracking && trackingState.activeLegPoints && trackingState.activeLegPoints.length > 0) {
                 let displayableNextTarget = null;
-                for(let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++){
-                    if(trackingState.activeLegPoints[i].pointCategory !== 'waypoint'){
+
+                // Find the first non-waypoint *after* currentSegmentStartIndex
+                for (let i = currentSegmentStartIndex + 1; i < trackingState.activeLegPoints.length; i++) {
+                    if (trackingState.activeLegPoints[i].pointCategory !== 'waypoint') {
                         displayableNextTarget = trackingState.activeLegPoints[i];
                         break;
                     }
                 }
-                if (!displayableNextTarget && trackingState.activeLegPoints.length > 0 && currentSegmentStartIndex < trackingState.activeLegPoints.length -1) {
-                    displayableNextTarget = trackingState.activeLegPoints[trackingState.activeLegPoints.length - 1]; // Last point of leg
-                }
 
-
-                if(displayableNextTarget) {
+                if (displayableNextTarget) {
                     nextStopName = displayableNextTarget.name;
                     const listPoints = getSortedRoutePointsForDisplay(); 
                     const displayIndexInList = listPoints.findIndex(dp => dp.id === displayableNextTarget.id);
                     if (displayIndexInList !== -1 && document.querySelectorAll('#stopsList .stop-item')[displayIndexInList]) {
                         document.querySelectorAll('#stopsList .stop-item')[displayIndexInList].classList.add('next-stop-highlight');
                     }
-                } else if (currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) { // At or past the last point
+                } else {
+                    // No more non-waypoint stops ahead in this leg, or at the very end.
                     nextStopName = "Fin de Bandera";
                 }
 
@@ -1535,10 +1593,13 @@
                 const displayPoints = getSortedRoutePointsForDisplay();
                 if (displayPoints.length > 0 && displayPoints[0].pointCategory !== 'waypoint') {
                      nextStopName = displayPoints[0].name;
+                } else if (displayPoints.length > 0) { // If first point is a waypoint, still show something.
+                     nextStopName = displayPoints[0].name + " (Paso)";
                 }
             }
             document.getElementById('nextStopDisplay').textContent = `Próxima: ${nextStopName}`;
         }
+
 
         function calculateTimeDeviation(currentUserGeoPosition) {
             if (!isTracking || !trackingState.activeLegPoints || trackingState.activeLegPoints.length === 0) {
@@ -1548,27 +1609,18 @@
             }
 
             const currentTime = new Date();
-            const p1_ep = routePoints.find(p => p.pointCategory === 'lineEndpoint' && p.isFirstEndpoint);
-            const p2_ep = routePoints.find(p => p.pointCategory === 'lineEndpoint' && !p.isFirstEndpoint);
+            
+            // Ensure activeLegPoints has points with effectiveScheduledTime
+            const p1_leg_start = trackingState.activeLegPoints[0];
+            const p_last_leg_end = trackingState.activeLegPoints[trackingState.activeLegPoints.length-1];
 
             // Determine el punto de "partida" de la pierna actual y su tiempo de salida programado
-            let legDeparturePoint = null;
-            let legDepartureTimeDate = null; // Store as Date object
-            if (trackingState.currentFlag === routeSettings.flagNameIda && p1_ep) {
-                legDeparturePoint = trackingState.activeLegPoints.find(p => p.id === p1_ep.id); // Get from activeLegPoints to have effective time
-                if (legDeparturePoint) legDepartureTimeDate = legDeparturePoint.effectiveScheduledTime;
-            } else if (trackingState.currentFlag === routeSettings.flagNameVuelta && p2_ep) {
-                legDeparturePoint = trackingState.activeLegPoints.find(p => p.id === p2_ep.id);
-                if (legDeparturePoint) legDepartureTimeDate = legDeparturePoint.effectiveScheduledTime;
-            }
-
+            let legDepartureTimeDate = p1_leg_start.effectiveScheduledTime ? new Date(p1_leg_start.effectiveScheduledTime) : null;
+            
             const currentPointInLeg = trackingState.activeLegPoints[currentSegmentStartIndex];
 
             // Caso 1: Estoy en el punto de partida de la pierna (Punta de Línea), esperando para salir.
-            // `currentSegmentStartIndex` es el índice de esta Punta de Línea en `activeLegPoints`.
-            if (legDeparturePoint && currentPointInLeg && currentPointInLeg.id === legDeparturePoint.id && legDepartureTimeDate &&
-                currentSegmentStartIndex === trackingState.activeLegPoints.findIndex(p => p.id === legDeparturePoint.id)
-               ) {
+            if (currentSegmentStartIndex === 0 && legDepartureTimeDate && currentPointInLeg.id === p1_leg_start.id) {
                 const deviationMillis = legDepartureTimeDate.getTime() - currentTime.getTime();
                 displayDeviation(deviationMillis);
                 return;
@@ -1585,11 +1637,11 @@
             }
 
             // Caso 2: No hay un "nextScheduledStop", significa que estamos en/después del último punto con horario de la pierna.
-            // La desviación es contra el tiempo de llegada de ese último punto.
+            // La desviación es contra el tiempo de llegada de ese último punto de la pierna.
             if (!nextScheduledStop) {
-                const lastPointOfLeg = trackingState.activeLegPoints[trackingState.activeLegPoints.length - 1];
-                if (lastPointOfLeg && lastPointOfLeg.pointCategory !== 'waypoint' && lastPointOfLeg.effectiveScheduledTime) {
-                    const arrivalTime = new Date(lastPointOfLeg.effectiveScheduledTime);
+                const lastPointOfLegWithTime = p_last_leg_end.effectiveScheduledTime ? p_last_leg_end : null;
+                if (lastPointOfLegWithTime) {
+                    const arrivalTime = new Date(lastPointOfLegWithTime.effectiveScheduledTime);
                     const deviationMillis = arrivalTime.getTime() - currentTime.getTime();
                     displayDeviation(deviationMillis);
                 } else {
@@ -1599,13 +1651,13 @@
                 return;
             }
 
-            // Caso 3: Tenemos un `nextScheduledStop`. Necesitamos el `previousScheduledStopOrLegStart`.
+            // Caso 3: Tenemos un `nextScheduledStop`. Necesitamos el `previousScheduledPointOrLegStart`.
             let previousScheduledPoint = null;
-            // Si el punto actual (currentPointInLeg) tiene horario, es nuestro "previous"
+            // Si el punto actual (currentPointInLeg based on currentSegmentStartIndex) tiene horario, es nuestro "previous"
             if (currentPointInLeg.pointCategory !== 'waypoint' && currentPointInLeg.effectiveScheduledTime) {
                 previousScheduledPoint = currentPointInLeg;
-            } else { // El punto actual es un waypoint, buscar hacia atrás
-                for (let i = currentSegmentStartIndex - 1; i >= 0; i--) {
+            } else { // El punto actual es un waypoint, o no tiene tiempo; buscar hacia atrás desde currentSegmentStartIndex
+                for (let i = currentSegmentStartIndex; i >= 0; i--) { // Start from currentSegmentStartIndex itself
                     const p = trackingState.activeLegPoints[i];
                     if (p.pointCategory !== 'waypoint' && p.effectiveScheduledTime) {
                         previousScheduledPoint = p;
@@ -1613,16 +1665,16 @@
                     }
                 }
             }
-             // Si aún no hay previousScheduledPoint (ej: pierna empieza con waypoints antes de la primera parada),
-             // y tenemos un legDeparturePoint, ese es nuestro reference.
-            if (!previousScheduledPoint && legDeparturePoint && legDepartureTimeDate) {
-                 previousScheduledPoint = legDeparturePoint; // legDeparturePoint already has .effectiveScheduledTime
+            // If still no previousScheduledPoint (e.g., leg starts with waypoints before first timed stop),
+            // use leg start if it has time.
+            if (!previousScheduledPoint && legDepartureTimeDate) {
+                 previousScheduledPoint = { ...p1_leg_start, effectiveScheduledTime: legDepartureTimeDate }; // Use the leg start point
             }
 
 
             if (!previousScheduledPoint && nextScheduledStop) { // Solo tenemos B, no A (ej: pierna con solo 1 parada al final)
                  const timeB = new Date(nextScheduledStop.effectiveScheduledTime).getTime();
-                 const deviationMillis = timeB - currentTime.getTime();
+                 const deviationMillis = timeB - currentTime.getTime(); // Deviation against next stop
                  displayDeviation(deviationMillis);
                  return;
             }
@@ -1641,16 +1693,13 @@
             const timeB = new Date(pointB.effectiveScheduledTime).getTime();
             const segmentTotalScheduledMillis = timeB - timeA;
 
-            if (segmentTotalScheduledMillis < 0) {
-                // ERR_SCH: SalidaPuntaLinea[VueltaN] > ParadaIntermedia[Vuelta1]
-                // Desviación directa contra el tiempo de la siguiente parada.
-                // console.warn("Corrected ERR_SCH: Time B < Time A. Deviating against Time B.", "A:", pointA, "B:", pointB);
-                const deviationMillis = timeB - currentTime.getTime();
+            if (segmentTotalScheduledMillis < 0) { // Time B is earlier than Time A - schedule error
+                const deviationMillis = timeB - currentTime.getTime(); // Deviate against B
                 displayDeviation(deviationMillis);
                 return;
             }
             if (segmentTotalScheduledMillis === 0) { // A y B mismo tiempo
-                const deviationMillis = timeA - currentTime.getTime();
+                const deviationMillis = timeA - currentTime.getTime(); // Deviate against A (or B)
                 displayDeviation(deviationMillis);
                 return;
             }
@@ -1668,11 +1717,12 @@
                 const distToA = currentUserLatLng.distanceTo(latLngA); 
                 const distToB = currentUserLatLng.distanceTo(latLngB); 
 
-                if (distToA < 10.0) progressPercentage = 0.0; 
-                else if (distToB < 10.0) progressPercentage = 1.0; 
+                if (distToA < 10.0 && currentSegmentStartIndex === trackingState.activeLegPoints.findIndex(p => p.id === pointA.id)) progressPercentage = 0.0; 
+                else if (distToB < 10.0 && currentSegmentStartIndex === trackingState.activeLegPoints.findIndex(p => p.id === pointB.id)-1) progressPercentage = 1.0;
                 else if (distToA > distanceTotalSegment && distToA > distToB) progressPercentage = 1.0; // Beyond B
-                else if (distToB > distanceTotalSegment && distToB > distToA) progressPercentage = 0.0; // Before A
+                else if (distToB > distanceTotalSegment && distToB > distToA) progressPercentage = 0.0; // Before A (or off-route)
                 else { 
+                    // Project user's current location onto the segment AB
                     const dist_A_to_P_prime_on_AB = (Math.pow(distanceTotalSegment, 2) + Math.pow(distToA, 2) - Math.pow(distToB, 2)) / (2 * distanceTotalSegment);
                     progressPercentage = dist_A_to_P_prime_on_AB / distanceTotalSegment;
                 }
@@ -1691,13 +1741,15 @@
             const totalSecondsValue = Math.floor(absMillis / 1000);
             const displaySeconds = totalSecondsValue % 60;
             const totalMinutesValue = Math.floor(totalSecondsValue / 60);
-            const sign = deviationMillis >= 0 ? "+" : "-";
+            const sign = deviationMillis >= 0 ? "+" : "-"; // Positive means ahead of schedule (expected time is later than current time)
             const formattedDeviation = `${sign}${String(totalMinutesValue).padStart(2, '0')}:${String(displaySeconds).padStart(2, '0')}`;
             const deviationDiv = document.getElementById('timeDeviation');
             deviationDiv.textContent = formattedDeviation;
-            if (deviationMillis >= -59999 && deviationMillis <= 59999) deviationDiv.style.color = "#FFFFFF"; // +/- 1 min: Blanco
-            else if (deviationMillis > 59999) deviationDiv.style.color = "#00FF00"; // Adelantado: Verde
-            else deviationDiv.style.color = "#FF0000"; // Atrasado: Rojo
+
+            // Corrected colors: Ahead (+) is Green, Delayed (-) is Red
+            if (deviationMillis > 59999) deviationDiv.style.color = "#00FF00"; // Adelantado (más de 1 min): Verde
+            else if (deviationMillis < -59999) deviationDiv.style.color = "#FF0000"; // Atrasado (más de 1 min): Rojo
+            else deviationDiv.style.color = "#FFFFFF"; // En tiempo (+/- 1 min): Blanco
         }
         function handleGeolocationError(error) { 
             console.error("Error de geolocalización: ", error);
