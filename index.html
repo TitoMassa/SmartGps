@@ -1199,9 +1199,16 @@
                         etaMillis = 0; // El ETA no puede ser negativo.
                     }
 
-                    // Redondear hacia arriba al minuto más cercano para la visualización.
-                    const etaMinutes = Math.ceil(etaMillis / (1000 * 60));
-                    etaString = `${etaMinutes} min.`;
+                    // *** INICIO DE CAMBIOS SOLICITADOS ***
+                    // Si el ETA es menor a 1 minuto (60000 ms), mostrar "ARRIBANDO".
+                    if (etaMillis < 60000) {
+                        etaString = "ARRIBANDO";
+                    } else {
+                        // De lo contrario, redondear hacia abajo al minuto para la visualización.
+                        const etaMinutes = Math.floor(etaMillis / (1000 * 60));
+                        etaString = `${etaMinutes} min.`;
+                    }
+                    // *** FIN DE CAMBIOS SOLICITADOS ***
                 }
                 
                 let rowClass = "tracking-stop-row";
