@@ -184,7 +184,7 @@
         .intermediate-stop-icon { background-color:#2196F3 !important; padding: 5px 8px !important; border-radius: 5px !important; color: white !important; font-size:12px !important; font-weight:bold !important; border: 1px solid white !important; min-width: 15px !important; text-align: center !important; }
         .user-location-icon { background-color: #007bff !important; border-radius: 50%; width: 16px !important; height: 16px !important; border: 2px solid white; box-shadow: 0 0 0 2px #007bff; }
         
-        /* --- ESTILOS PARA POPUP DE EDICIÓN (NUEVO) --- */
+        /* --- ESTILOS PARA POPUP DE EDICIÓN (MODIFICADO) --- */
         .leaflet-popup-content-wrapper, .leaflet-popup-tip {
             background: #21262d;
             color: #c9d1d9;
@@ -193,6 +193,9 @@
         }
         .leaflet-popup-content { margin: 15px; }
         .popup-form-field { margin-bottom: 10px; }
+        .popup-form-field-group { display: flex; gap: 8px; align-items: flex-end; }
+        .popup-form-field-group > div { flex-grow: 1; }
+        .popup-form-field-group > div:last-child { flex-grow: 0; flex-basis: 70px; }
         .popup-form-field label { font-size: 0.9em; font-weight: 500; }
         .popup-form-field input { width: 100%; box-sizing: border-box; }
         .popup-actions { margin-top: 15px; text-align: right; }
@@ -470,19 +473,27 @@
                   <input type="text" id="popup_pointName" value="${point.name || ''}" ${point.pointCategory === 'waypoint' ? 'readonly' : ''}>
                 </div>`;
 
-            if (point.pointCategory === 'lineEndpoint') {
-                const timeValue = point.schedule ? point.schedule.scheduledTime : null;
-                const label = point.isStartPoint ? 'Salida Programada:' : 'Llegada Programada:';
+            if (point.pointCategory === 'lineEndpoint' || point.pointCategory === 'intermediateStop') {
+                const timeValue = point.pointCategory === 'lineEndpoint' ? (point.schedule ? point.schedule.scheduledTime : null) : point.scheduledTime;
+                const dateObj = timeValue ? new Date(timeValue) : null;
+                const secondsValue = dateObj ? dateObj.getSeconds() : 0;
+                let label = '';
+                if (point.pointCategory === 'lineEndpoint') {
+                    label = point.isStartPoint ? 'Salida Programada (HH:MM:SS):' : 'Llegada Programada (HH:MM:SS):';
+                } else {
+                    label = 'Horario Programado (HH:MM:SS):';
+                }
                 formContent += `
                     <div class="popup-form-field">
-                      <label for="popup_scheduledTime">${label}</label>
-                      <input type="datetime-local" id="popup_scheduledTime" value="${formatDateTimeForInput(timeValue)}">
-                    </div>`;
-            } else if (point.pointCategory === 'intermediateStop') {
-                formContent += `
-                    <div class="popup-form-field">
-                      <label for="popup_scheduledTime">Horario Programado:</label>
-                      <input type="datetime-local" id="popup_scheduledTime" value="${formatDateTimeForInput(point.scheduledTime)}">
+                        <label for="popup_scheduledTime">${label}</label>
+                        <div class="popup-form-field-group">
+                           <div>
+                                <input type="datetime-local" id="popup_scheduledTime" value="${formatDateTimeForInput(timeValue)}">
+                           </div>
+                           <div>
+                                <input type="number" id="popup_scheduledSeconds" min="0" max="59" value="${secondsValue}" title="Segundos">
+                           </div>
+                        </div>
                     </div>`;
             }
             
@@ -493,7 +504,7 @@
                 </div>
             `;
             
-            const popup = L.popup({ minWidth: 250, closeButton: true })
+            const popup = L.popup({ minWidth: 300, closeButton: true })
                 .setLatLng([point.lat, point.lng])
                 .setContent(formContent)
                 .openOn(map);
@@ -509,10 +520,17 @@
             const timeInput = document.getElementById('popup_scheduledTime');
             if (timeInput) {
                 const timeValue = timeInput.value;
+                const secondsValue = parseInt(document.getElementById('popup_scheduledSeconds').value, 10) || 0;
+                
                 const dateVal = timeValue ? new Date(timeValue) : null;
                 if (timeValue && isNaN(dateVal?.getTime())) {
                     alert("Formato de fecha/hora inválido."); return;
                 }
+
+                if (dateVal) {
+                    dateVal.setSeconds(secondsValue, 0); // Establecer segundos y resetear milisegundos
+                }
+                
                 if (point.pointCategory === 'lineEndpoint') {
                     if (!point.schedule) point.schedule = {};
                     point.schedule.scheduledTime = dateVal;
@@ -894,12 +912,15 @@
             }
         }
         function getSortedRoutePointsForDisplay() { return [...routePoints].sort((a, b) => a.originalIndex - b.originalIndex).filter(p => p.pointCategory !== 'waypoint'); }
+        
+        // MODIFICADO: formatTime ahora muestra segundos
         function formatTime(dateObj, includeDate = false) {
             if (!dateObj || isNaN(new Date(dateObj).getTime())) return "N/A";
-            let timeStr = new Date(dateObj).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            let timeStr = new Date(dateObj).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             if (includeDate) { timeStr += ` (${new Date(dateObj).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit'})})`; }
             return timeStr;
         }
+
         function saveRoute() {
             const routeNameInput = document.getElementById('routeName');
             if (!routeNameInput.value) { alert("Por favor, ingresa un nombre para la ruta."); return; }
@@ -1167,7 +1188,6 @@
                     isWaitingAtStartPoint = true;
                 }
             }
-            // --- Fin de la lógica de espera ---
             
             let html = "";
             displayPoints.forEach(point => {
@@ -1181,23 +1201,18 @@
                     const deviationMillis = latestDeviationMillis || 0;
                     const timeRemainingMillis = scheduledMillis - nowMillis;
                     
-                    // --- INICIO DE LÓGICA DE ETA CORREGIDA ---
-                    let etaMillis = timeRemainingMillis; // CÁLCULO BASE: Tiempo restante hasta la hora programada.
+                    let etaMillis;
 
-                    if (deviationMillis > 0) { // Solo se ajusta el ETA si el vehículo está ADELANTADO.
-                        if (isWaitingAtStartPoint) {
-                            // CASO ESPECIAL 1: Adelantado y esperando en el P. de Inicio ("Hacer Hora").
-                            // Se SUMA el adelanto al ETA porque el conductor tiene que esperar.
-                            etaMillis = timeRemainingMillis + deviationMillis;
-                        } else {
-                            // CASO ESPECIAL 2: Adelantado y ya en ruta.
-                            // Se RESTA el adelanto del ETA porque se llegará antes.
-                            etaMillis = timeRemainingMillis - deviationMillis;
-                        }
+                    if (isWaitingAtStartPoint && deviationMillis > 0) {
+                        // CASO ESPECIAL: Adelantado y esperando en el P. de Inicio ("Hacer Hora").
+                        // El ETA es el tiempo que falta hasta la hora programada. No se resta el adelanto.
+                        etaMillis = timeRemainingMillis;
+                    } else {
+                        // CASO NORMAL: El ETA es el tiempo restante ajustado por la desviación.
+                        // Esto correctamente AUMENTA el ETA si está atrasado (dev < 0) 
+                        // y DISMINUYE el ETA si está adelantado (dev > 0).
+                        etaMillis = timeRemainingMillis - deviationMillis;
                     }
-                    // NOTA: Si está atrasado (deviationMillis < 0), no se ajusta el ETA,
-                    // para que el valor mostrado sea el que el usuario espera ("4 min" en el ejemplo).
-                    // --- FIN DE LÓGICA DE ETA CORREGIDA ---
 
                     if (etaMillis < 0) {
                         etaMillis = 0; // El ETA no puede ser negativo.
