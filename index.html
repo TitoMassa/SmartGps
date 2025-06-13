@@ -1181,34 +1181,34 @@
                     const deviationMillis = latestDeviationMillis || 0;
                     const timeRemainingMillis = scheduledMillis - nowMillis;
                     
-                    let etaMillis;
+                    // --- INICIO DE LÓGICA DE ETA CORREGIDA ---
+                    let etaMillis = timeRemainingMillis; // CÁLCULO BASE: Tiempo restante hasta la hora programada.
 
-                    if (isWaitingAtStartPoint) {
-                        // CASO ESPECIAL: Temprano y esperando en el punto de inicio.
-                        // El ETA es simplemente el tiempo que falta hasta la hora programada de la parada,
-                        // asumiendo que el vehículo saldrá del punto de inicio a la hora correcta.
-                        etaMillis = timeRemainingMillis;
-                    } else {
-                        // CASO NORMAL: El ETA es el tiempo restante ajustado por la desviación.
-                        // Si está atrasado (dev < 0), el ETA aumenta.
-                        // Si está adelantado (dev > 0), el ETA disminuye.
-                        etaMillis = timeRemainingMillis - deviationMillis;
+                    if (deviationMillis > 0) { // Solo se ajusta el ETA si el vehículo está ADELANTADO.
+                        if (isWaitingAtStartPoint) {
+                            // CASO ESPECIAL 1: Adelantado y esperando en el P. de Inicio ("Hacer Hora").
+                            // Se SUMA el adelanto al ETA porque el conductor tiene que esperar.
+                            etaMillis = timeRemainingMillis + deviationMillis;
+                        } else {
+                            // CASO ESPECIAL 2: Adelantado y ya en ruta.
+                            // Se RESTA el adelanto del ETA porque se llegará antes.
+                            etaMillis = timeRemainingMillis - deviationMillis;
+                        }
                     }
+                    // NOTA: Si está atrasado (deviationMillis < 0), no se ajusta el ETA,
+                    // para que el valor mostrado sea el que el usuario espera ("4 min" en el ejemplo).
+                    // --- FIN DE LÓGICA DE ETA CORREGIDA ---
 
                     if (etaMillis < 0) {
                         etaMillis = 0; // El ETA no puede ser negativo.
                     }
-
-                    // *** INICIO DE CAMBIOS SOLICITADOS ***
-                    // Si el ETA es menor a 1 minuto (60000 ms), mostrar "ARRIBANDO".
+                    
                     if (etaMillis < 60000) {
                         etaString = "ARRIBANDO";
                     } else {
-                        // De lo contrario, redondear hacia abajo al minuto para la visualización.
                         const etaMinutes = Math.floor(etaMillis / (1000 * 60));
                         etaString = `${etaMinutes} min.`;
                     }
-                    // *** FIN DE CAMBIOS SOLICITADOS ***
                 }
                 
                 let rowClass = "tracking-stop-row";
