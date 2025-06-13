@@ -1146,40 +1146,61 @@
             else deviationDiv.style.color = "#c9d1d9"; // En tiempo
         }
 
-        // NUEVA FUNCIÓN: Actualiza la lista de paradas y ETAs en el panel de seguimiento
+        // FUNCIÓN CORREGIDA: Actualiza la lista de paradas y ETAs en el panel de seguimiento
         function updateTrackingStopsList() {
             if (!isTracking) return;
             const listDiv = document.getElementById('trackingStopsList');
             const displayPoints = trackingState.activeLegPoints.filter(p => p.pointCategory !== 'waypoint');
             if (displayPoints.length === 0) { listDiv.innerHTML = ""; return; }
             
-            const now = new Date();
+            const nowMillis = new Date().getTime();
             const nextStopInfo = getNextDisplayableStop();
-            let html = "";
+
+            // --- Lógica para determinar si el vehículo está esperando en el punto de inicio ---
+            const startPoint = trackingState.activeLegPoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
+            let isWaitingAtStartPoint = false;
+            // Condiciones: En seguimiento, con posición, en el primer segmento, adelantado, y físicamente en el punto de inicio.
+            if (startPoint && lastKnownPosition && currentSegmentStartIndex === 0 && (latestDeviationMillis || 0) > 0) {
+                const userLatLng = L.latLng(lastKnownPosition.coords.latitude, lastKnownPosition.coords.longitude);
+                const startPointLatLng = L.latLng(startPoint.lat, startPoint.lng);
+                if (userLatLng.distanceTo(startPointLatLng) < currentStopRadius) {
+                    isWaitingAtStartPoint = true;
+                }
+            }
+            // --- Fin de la lógica de espera ---
             
-            displayPoints.forEach((point, index) => {
+            let html = "";
+            displayPoints.forEach(point => {
                 const pointIndexInFullPath = trackingState.activeLegPoints.findIndex(p => p.id === point.id);
                 const isPassed = pointIndexInFullPath <= currentSegmentStartIndex;
+                
                 let etaString = "—";
 
                 if (!isPassed && point.effectiveScheduledTime) {
                     const scheduledMillis = new Date(point.effectiveScheduledTime).getTime();
-                    const deviation = latestDeviationMillis || 0;
+                    const deviationMillis = latestDeviationMillis || 0;
+                    const timeRemainingMillis = scheduledMillis - nowMillis;
                     
-                    let etaMillis = (scheduledMillis - now.getTime()) + deviation;
-                    
-                    // Lógica especial para el punto de inicio
-                    const isStartPoint = point.pointCategory === 'lineEndpoint' && point.isStartPoint;
-                    if (isStartPoint && deviation > 0 && lastKnownPosition) { // Si está adelantado
-                        const userLatLng = L.latLng(lastKnownPosition.coords.latitude, lastKnownPosition.coords.longitude);
-                        const startPointLatLng = L.latLng(point.lat, point.lng);
-                        if (userLatLng.distanceTo(startPointLatLng) < currentStopRadius) {
-                            etaMillis += deviation; // Suma el adelanto para "hacer hora"
-                        }
+                    let etaMillis;
+
+                    if (isWaitingAtStartPoint) {
+                        // CASO ESPECIAL: Temprano y esperando en el punto de inicio.
+                        // El ETA es simplemente el tiempo que falta hasta la hora programada de la parada,
+                        // asumiendo que el vehículo saldrá del punto de inicio a la hora correcta.
+                        etaMillis = timeRemainingMillis;
+                    } else {
+                        // CASO NORMAL: El ETA es el tiempo restante ajustado por la desviación.
+                        // Si está atrasado (dev < 0), el ETA aumenta.
+                        // Si está adelantado (dev > 0), el ETA disminuye.
+                        etaMillis = timeRemainingMillis - deviationMillis;
                     }
 
-                    if (etaMillis < 0) etaMillis = 0;
-                    const etaMinutes = Math.floor(etaMillis / (1000 * 60));
+                    if (etaMillis < 0) {
+                        etaMillis = 0; // El ETA no puede ser negativo.
+                    }
+
+                    // Redondear hacia arriba al minuto más cercano para la visualización.
+                    const etaMinutes = Math.ceil(etaMillis / (1000 * 60));
                     etaString = `${etaMinutes} min.`;
                 }
                 
