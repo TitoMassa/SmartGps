@@ -17,11 +17,27 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin=""></script>
+            
+    <!-- SDK de Firebase - ¡AÑADIDO! Necesario para la funcionalidad multi-chofer -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
 </head>
 <body>
 
+    <!-- MODAL DE LOGIN - ¡AÑADIDO! -->
+    <div id="loginModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>Bienvenido a Smart Move Pro</h2>
+            <p>Ingresa tu nombre para comenzar</p>
+            <input type="text" id="driverNameInput" placeholder="Ej: Juan Pérez">
+            <button id="loginBtn" class="btn-primary btn-block">Ingresar</button>
+        </div>
+    </div>
+
+
     <div id="appContainer">
-        <!-- BOTÓN DE PANTALLA COMPLETA AÑADIDO -->
+        <!-- BOTÓN DE PANTALLA COMPLETA -->
         <button id="fullscreenBtn" onclick="toggleFullscreen()" title="Pantalla Completa">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
@@ -34,7 +50,7 @@
             <!-- Botón para mostrar/ocultar mapa en horizontal -->
             <button id="toggleMapBtn" onclick="toggleMapView()" class="btn-secondary" style="display: none;">Ver Mapa</button>
 
-            <!-- Dashboard de seguimiento -->
+            <!-- Dashboard de seguimiento (Sin cambios) -->
             <div id="trackingDashboard" style="display: none;">
                 <div>
                     <div id="trackingInfoDisplay">Ruta en Progreso</div>
@@ -46,34 +62,35 @@
                     <div style="margin-top: 15px;">
                         <button id="stopTrackingBtn" onclick="stopTracking()" class="btn-danger btn-block">Detener Seguimiento</button>
                         
-                        <!-- CONTROLES DE NAVEGACIÓN MANUAL ENVUELTOS EN UN DIV -->
                         <div id="manualNavControls">
                           <input type="checkbox" id="manualStopNav" onchange="updateManualNavButtons()">
                           <label for="manualStopNav" style="display:inline;">Navegación Manual</label>
                           <button id="prevStopBtn" onclick="goToPreviousActivePoint()" class="btn-secondary btn-sm" style="display:none;">Anterior</button>
                           <button id="nextStopBtn" onclick="goToNextActivePoint()" class="btn-secondary btn-sm" style="display:none;">Siguiente</button>
                         </div>
-
                     </div>
                 </div>
                 
-                <!-- Lista de paradas y ETAs durante el seguimiento -->
                 <div id="trackingStopsListContainer">
                     <h4>Próximas Paradas y ETA</h4>
-                    <div id="trackingStopsList">
-                        <!-- El contenido se generará con JavaScript -->
-                    </div>
+                    <div id="trackingStopsList"></div>
                 </div>
 
-                <!-- Botón y panel de Debug ETA -->
                 <button id="toggleEtaDebugBtn" onclick="toggleEtaDebug()" class="btn-info btn-sm btn-block" style="margin-top: 15px;">🐛 Debug ETA</button>
-                <div id="etaDebugPanel" style="display: none;">
-                    <!-- El contenido de debug se generará con JavaScript -->
-                </div>
+                <div id="etaDebugPanel" style="display: none;"></div>
             </div>
 
             <!-- Controles principales (acordeones) -->
             <div id="mainControlsContainer">
+            
+                <!-- NUEVA SECCIÓN: ESTADO DE CHOFERES - ¡AÑADIDO! -->
+                <div class="accordion-header">★ Estado de Choferes</div>
+                <div class="accordion-content">
+                    <div id="driverStatusList">
+                        <p style='color:#8b949e; text-align:center;'>Conectando...</p>
+                    </div>
+                </div>
+
                 <!-- SECCIÓN 1: Edición de Ruta -->
                 <div class="accordion-header active">1. Editar Ruta Actual</div>
                 <div class="accordion-content active">
@@ -98,13 +115,14 @@
                     <input type="text" id="routeName" placeholder="Ej: Ruta Centro">
                     <button onclick="saveRoute()" class="btn-primary">💾 Guardar Ruta</button>
                     <hr style="border-color: #30363d; margin: 20px 0;">
-                    <label for="savedRoutes">Cargar Ruta Guardada:</label>
+                    <!-- MODIFICACIÓN: Texto actualizado para reflejar que son compartidas -->
+                    <label for="savedRoutes">Cargar Ruta Guardada (Compartida):</label>
                     <select id="savedRoutes"></select>
                     <button onclick="loadRoute()" class="btn-secondary">Cargar</button>
                     <button onclick="deleteRoute()" class="btn-danger">Borrar</button>
                 </div>
 
-                <!-- SECCIÓN 3: Seguimiento y Cola -->
+                <!-- SECCIÓN 3: Seguimiento y Cola (Sin cambios)-->
                 <div class="accordion-header">3. Iniciar Seguimiento y Cola</div>
                 <div class="accordion-content">
                     <h3>Iniciar Seguimiento</h3>
@@ -125,7 +143,7 @@
         </div>
     </div>
 
-    <!-- Script principal de la aplicación (se carga al final para mejor rendimiento) -->
+    <!-- Script principal de la aplicación -->
     <script src="script.js" defer></script>
 </body>
 </html>
