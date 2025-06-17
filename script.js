@@ -25,6 +25,49 @@ const ROUTE_QUEUE_CACHE_KEY = 'smartMovePro_unidir_simple_routeQueue';
 let trackingState = { activeLegPoints: [] };
 
 
+// --- MODIFICACIÓN: FUNCIÓN DE PANTALLA COMPLETA AÑADIDA ---
+function toggleFullscreen() {
+    const elem = document.documentElement;
+    const fsBtn = document.getElementById('fullscreenBtn');
+
+    if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+        // Entrar en pantalla completa
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+        } else if (elem.mozRequestFullScreen) {
+            elem.mozRequestFullScreen();
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+        }
+        // Cambiar el icono del botón
+        fsBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path>
+            </svg>`;
+        fsBtn.title = "Salir de Pantalla Completa";
+    } else {
+        // Salir de pantalla completa
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+        // Restaurar el icono del botón
+        fsBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>`;
+        fsBtn.title = "Pantalla Completa";
+    }
+}
+
+
 // --- INICIALIZACIÓN Y LÓGICA DE PWA ---
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
@@ -51,33 +94,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- GESTIÓN DE LA INTERFAZ (MODO HORIZONTAL) ---
 
+// --- MODIFICACIÓN: FUNCIÓN REESCRITA PARA CONTROLAR MEJOR EL LAYOUT ---
 function handleOrientationChange() {
     if (!isTracking) return;
 
     const isLandscape = window.matchMedia("(orientation: landscape)").matches;
     const body = document.body;
     const toggleMapBtn = document.getElementById('toggleMapBtn');
+    const manualNavControls = document.getElementById('manualNavControls');
+    const trackingStopsListContainer = document.getElementById('trackingStopsListContainer');
 
     if (isLandscape) {
         body.classList.add('landscape-tracking-active');
         toggleMapBtn.style.display = 'block';
-        // Asegurarse de que el estado visual coincide con el estado lógico
+        
         if (isMapVisibleInLandscape) {
+            // MODO HORIZONTAL CON MAPA
             body.classList.add('map-visible');
             toggleMapBtn.textContent = 'Ocultar Mapa';
+            // Restaurar visibilidad de controles de navegación manual
+            manualNavControls.style.display = 'block';
         } else {
+            // MODO HORIZONTAL SIN MAPA (VISTA DE PANEL)
             body.classList.remove('map-visible');
             toggleMapBtn.textContent = 'Ver Mapa';
+            // Ocultar "Navegación Manual" y asegurar que la lista de paradas se vea
+            manualNavControls.style.display = 'none';
+            trackingStopsListContainer.style.display = 'block'; // Asegura que la lista se muestre
         }
     } else {
-        // Si vuelve a vertical, limpiar todas las clases de estado horizontal
+        // MODO VERTICAL
+        // Limpiar todas las clases de estado horizontal
         body.classList.remove('landscape-tracking-active', 'map-visible');
         toggleMapBtn.style.display = 'none';
+        // Restaurar visibilidad de controles de navegación manual
+        manualNavControls.style.display = 'block';
     }
     
     // Invalidar el tamaño del mapa para que se redibuje correctamente
     setTimeout(() => map.invalidateSize(), 200);
 }
+
 
 function toggleMapView() {
     isMapVisibleInLandscape = !isMapVisibleInLandscape;
@@ -563,7 +620,10 @@ function stopTracking(completedNaturally = false, reason = "") {
     // Limpiar clases de estado de la UI
     document.body.classList.remove('landscape-tracking-active', 'map-visible');
     document.getElementById('toggleMapBtn').style.display = 'none';
+    // --- MODIFICACIÓN --- Restaurar la visibilidad por defecto al detener el seguimiento
+    document.getElementById('manualNavControls').style.display = 'block';
     isMapVisibleInLandscape = false; // Resetear estado lógico
+    
     // Forzar un resize del mapa para que vuelva a su tamaño original en el layout
     setTimeout(() => map.invalidateSize(), 100);
 
