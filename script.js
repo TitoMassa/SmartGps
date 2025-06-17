@@ -14,16 +14,390 @@ let currentStopRadius = 50;
 let currentRouteNameForTracking = "";
 let waypointsVisible = false;
 
-// NUEVAS VARIABLES PARA SEGUIMIENTO MEJORADO Y UI
+// UI Y SEGUIMIENTO MEJORADO
 let deviationDisplayIntervalId = null;
 let latestDeviationMillis = null;
 let isEtaDebugVisible = false;
 let lastDeviationCalculation = {};
-let isMapVisibleInLandscape = false; // Estado de la UI para modo horizontal
-const CACHE_PREFIX = 'smartMovePro_unidir_simple_route_';
-const ROUTE_QUEUE_CACHE_KEY = 'smartMovePro_unidir_simple_routeQueue';
+let isMapVisibleInLandscape = false;
+const ROUTE_QUEUE_CACHE_KEY = 'smartMovePro_unidir_simple_routeQueue'; // La cola sigue siendo local
 let trackingState = { activeLegPoints: [] };
 
+
+// --- NUEVAS VARIABLES PARA MULTI-USUARIO Y FIREBASE ---
+let currentUser = null; // Será un objeto { name: 'Juan', uid: 'xyz...' }
+let database;
+let auth;
+let driverMarkers = {}; // { driverUid: marker }
+
+// --- ¡ACCIÓN REQUERIDA! ---
+// PEGA AQUÍ LA CONFIGURACIÓN DE TU PROYECTO FIREBASE
+// Esta configuración es segura para repositorios públicos SI Y SOLO SI
+// has configurado las Reglas de Seguridad en tu base de datos.
+const firebaseConfig = {
+    apiKey: "TU_API_KEY",
+    authDomain: "TU_AUTH_DOMAIN",
+    databaseURL: "TU_DATABASE_URL",
+    projectId: "TU_PROJECT_ID",
+    storageBucket: "TU_STORAGE_BUCKET",
+    messagingSenderId: "TU_MESSAGING_SENDER_ID",
+    appId: "TU_APP_ID"
+};
+
+
+// --- INICIALIZACIÓN Y LÓGICA DE PWA ---
+document.addEventListener('DOMContentLoaded', () => {
+    initMap();
+    initFirebase();
+    checkLoginState(); // Inicia el flujo de autenticación
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker registrado con éxito:', reg))
+            .catch(err => console.log('Error al registrar el Service Worker:', err));
+    }
+    window.addEventListener('resize', handleOrientationChange);
+    window.addEventListener('orientationchange', handleOrientationChange);
+});
+
+
+// --- LÓGICA DE LOGIN Y FIREBASE (VERSIÓN SEGURA) ---
+
+function initFirebase() {
+    try {
+        if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "TU_API_KEY") {
+             throw new Error("Configuración de Firebase no encontrada. Por favor, completa el objeto 'firebaseConfig' en script.js.");
+        }
+        firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
+        auth = firebase.auth();
+        console.log("Firebase inicializado correctamente.");
+    } catch (e) {
+        console.error(e.message);
+        // Ocultar la app y mostrar un error grande
+        document.getElementById('appContainer').style.display = 'none';
+        document.getElementById('loginModal').innerHTML = `<div class="modal-content" style="background-color:#f44336;"><h2>Error de Configuración</h2><p>${e.message}</p></div>`;
+        document.getElementById('loginModal').style.display = 'flex';
+    }
+}
+
+function checkLoginState() {
+    if (!auth) return; // No continuar si Firebase no se inicializó
+    
+    auth.onAuthStateChanged(user => {
+        if (user) { // El usuario ya tiene una sesión anónima
+            const driverName = sessionStorage.getItem('smartMovePro_driverName');
+            if (driverName) {
+                currentUser = { name: driverName, uid: user.uid };
+                document.getElementById('loginModal').style.display = 'none';
+                startAppForUser();
+            } else {
+                showLoginPrompt(user.uid);
+            }
+        } else { // No hay sesión anónima, la creamos
+            auth.signInAnonymously().catch(error => {
+                console.error("Error al iniciar sesión anónimamente:", error);
+                alert("No se pudo conectar al servicio. Por favor, recarga la página.");
+            });
+        }
+    });
+}
+
+function showLoginPrompt(uid) {
+    const modal = document.getElementById('loginModal');
+    const loginBtn = document.getElementById('loginBtn');
+    const nameInput = document.getElementById('driverNameInput');
+
+    modal.style.display = 'flex';
+    loginBtn.onclick = () => handleLogin(uid);
+    nameInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') handleLogin(uid);
+    });
+    nameInput.focus();
+}
+
+function handleLogin(uid) {
+    const driverName = document.getElementById('driverNameInput').value.trim();
+    if (driverName) {
+        currentUser = { name: driverName, uid: uid };
+        sessionStorage.setItem('smartMovePro_driverName', driverName);
+        document.getElementById('loginModal').style.display = 'none';
+        startAppForUser();
+    } else {
+        alert("Por favor, ingresa un nombre.");
+    }
+}
+
+function startAppForUser() {
+    console.log(`Usuario logueado como: ${currentUser.name} (${currentUser.uid})`);
+    
+    // Configurar presencia online en Firebase
+    const userStatusRef = database.ref('/drivers/' + currentUser.uid);
+    userStatusRef.onDisconnect().update({ isOnline: false, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+    userStatusRef.update({ isOnline: true, name: currentUser.name });
+
+    // Empezar a escuchar datos y cargar la app
+    loadSavedRoutesLists(); // Ahora cargará desde Firebase
+    listenForDriverUpdates();
+    updateStopsList();
+    updateManualNavButtons();
+}
+
+
+// --- LÓGICA DE SINCRONIZACIÓN DE CHOFERES ---
+
+function listenForDriverUpdates() {
+    if (!database) return;
+    const driversRef = database.ref('/drivers');
+    driversRef.on('value', (snapshot) => {
+        const driversData = snapshot.val();
+        if (driversData) {
+            updateDriverStatusUI(driversData);
+            updateDriverMarkers(driversData);
+        }
+    });
+}
+
+function updateDriverStatusUI(driversData) {
+    const listDiv = document.getElementById('driverStatusList');
+    listDiv.innerHTML = '';
+    const sortedDrivers = Object.entries(driversData)
+        .filter(([uid, driver]) => driver.isOnline)
+        .sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+    if (sortedDrivers.length === 0) {
+        listDiv.innerHTML = "<p style='color:#8b949e; text-align:center;'>No hay choferes conectados.</p>";
+        return;
+    }
+
+    sortedDrivers.forEach(([uid, driver]) => {
+        let statusClass = driver.isTracking ? 'tracking' : '';
+        let deviationClass = '';
+        let deviationText = '';
+
+        if (driver.isTracking && typeof driver.deviationMillis === 'number') {
+             if (driver.deviationMillis > 59999) deviationClass = 'adelantado';
+             else if (driver.deviationMillis < -59999) deviationClass = 'atrasado';
+             deviationText = formatMillisToMMSS(driver.deviationMillis);
+        }
+
+        const html = `
+            <div class="driver-status-item ${statusClass}">
+                <p class="driver-name">${driver.name} ${uid === currentUser.uid ? '(Tú)' : ''}</p>
+                ${driver.isTracking ? `
+                    <p>En ruta: <strong>${driver.currentRoute || 'N/A'}</strong></p>
+                    <div class="driver-details">
+                        <span>ETA Prox: <strong>${driver.etaNextStop || 'N/A'}</strong></span>
+                        <span class="driver-details-deviation ${deviationClass}">Desvío: <strong>${deviationText}</strong></span>
+                    </div>
+                ` : '<p>Estado: Libre</p>'}
+            </div>
+        `;
+        listDiv.innerHTML += html;
+    });
+}
+
+function updateDriverMarkers(driversData) {
+    // Eliminar marcadores de choferes que ya no están
+    Object.keys(driverMarkers).forEach(uid => {
+        if (!driversData[uid] || !driversData[uid].isOnline) {
+            map.removeLayer(driverMarkers[uid]);
+            delete driverMarkers[uid];
+        }
+    });
+    
+    // Actualizar o crear marcadores para choferes activos
+    Object.entries(driversData).forEach(([uid, driverData]) => {
+        if (uid === currentUser.uid) return; // No mostrar nuestro propio marcador naranja
+
+        if (driverData.isOnline && driverData.location) {
+            const latLng = [driverData.location.lat, driverData.location.lng];
+            if (driverMarkers[uid]) {
+                driverMarkers[uid].setLatLng(latLng);
+            } else {
+                const icon = L.divIcon({
+                    className: 'leaflet-div-icon other-driver-marker-icon',
+                    html: `<div class="marker-label">${driverData.name}</div>`,
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                });
+                driverMarkers[uid] = L.marker(latLng, { icon: icon }).addTo(map);
+            }
+        }
+    });
+}
+
+function updateMyStatusInFirebase(statusUpdate) {
+    if (!database || !currentUser) return;
+    const userStatusRef = database.ref('/drivers/' + currentUser.uid);
+    userStatusRef.update(statusUpdate);
+}
+
+
+// --- LÓGICA DE SEGUIMIENTO (MODIFICADA PARA REPORTAR A FIREBASE) ---
+
+function handlePositionUpdate(position) {
+    lastKnownPosition = position;
+    const { latitude, longitude, speed } = position.coords;
+    if (!userMarker) userMarker = L.marker([latitude, longitude], { icon: createUserLocationIcon() }).addTo(map);
+    else userMarker.setLatLng([latitude, longitude]);
+    document.getElementById('speedDisplay').textContent = `Velocidad: ${(speed ? (speed * 3.6) : 0).toFixed(1)} KM/H`;
+
+    updateMyStatusInFirebase({ location: { lat: latitude, lng: longitude } });
+    
+    if (!isTracking) return;
+
+    // ... (El resto de la lógica de handlePositionUpdate se mantiene igual)
+    const manualNav = document.getElementById('manualStopNav').checked;
+    if (!manualNav) { /* ... */ }
+    
+    calculateTimeDeviation(position); 
+    highlightNextStopInList(); 
+    updateManualNavButtons();
+    updateTrackingStopsList();
+    if (isEtaDebugVisible) updateEtaDebugInfo();
+    
+    // Reportar estado detallado a Firebase
+    const nextStopInfo = getNextDisplayableStop();
+    const etaString = document.querySelector(`#trackingStopsList .tracking-stop-row.is-next-stop .tracking-stop-eta`)?.textContent || 'N/A';
+    
+    const trackingPayload = {
+        deviationMillis: latestDeviationMillis,
+        etaNextStop: etaString,
+        nextStopName: nextStopInfo.point ? nextStopInfo.point.name : "Fin de Ruta"
+    };
+    updateMyStatusInFirebase(trackingPayload);
+}
+
+function startTracking() {
+    // ... (tu código de validación existente) ...
+    isTracking = true;
+    currentRouteNameForTracking = document.getElementById('routeName').value || "Ruta Actual";
+
+    updateMyStatusInFirebase({
+        isTracking: true,
+        currentRoute: currentRouteNameForTracking
+    });
+    // ... (el resto de tu función startTracking) ...
+    if (!setupCurrentLegForTracking()) { /* ... */ }
+    // ...
+}
+
+function stopTracking(completedNaturally = false, reason = "") {
+    updateMyStatusInFirebase({
+        isTracking: false,
+        deviationMillis: null,
+        etaNextStop: null,
+        nextStopName: null,
+        currentRoute: null
+    });
+    // ... (el resto de tu función stopTracking) ...
+    if (trackingIntervalId) navigator.geolocation.clearWatch(trackingIntervalId);
+    // ...
+}
+
+
+// --- PERSISTENCIA (REFACTORIZADA PARA FIREBASE) ---
+
+function saveRoute() {
+    const routeName = document.getElementById('routeName').value.trim();
+    if (!routeName) { alert("Por favor, ingresa un nombre para la ruta."); return; }
+    const startPoint = routePoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
+    const endPoint = routePoints.find(p => p.pointCategory === 'lineEndpoint' && !p.isStartPoint);
+    if (!startPoint || !endPoint || !getEndpointScheduledTime(startPoint) || !getEndpointScheduledTime(endPoint)) {
+        alert("La ruta debe tener P. Inicio y P. Final con horarios definidos para poder guardarse."); return;
+    }
+
+    const savablePoints = routePoints.map(p => {
+        const pointData = { id: p.id, lat: p.lat, lng: p.lng, name: p.name, pointCategory: p.pointCategory, originalIndex: p.originalIndex };
+        if (p.pointCategory === 'lineEndpoint') { pointData.isStartPoint = p.isStartPoint; pointData.schedule = { scheduledTime: p.schedule && p.schedule.scheduledTime ? new Date(p.schedule.scheduledTime).toISOString() : null }; }
+        else if (p.pointCategory === 'intermediateStop') { pointData.scheduledTime = p.scheduledTime ? new Date(p.scheduledTime).toISOString() : null; }
+        return pointData;
+    });
+
+    const routeDataToSave = { name: routeName, points: savablePoints, lastUpdatedBy: currentUser.name, updatedAt: firebase.database.ServerValue.TIMESTAMP };
+
+    if (!database) return alert("Error de conexión a la base de datos.");
+    const routeRef = database.ref('/routes/' + routeName);
+    routeRef.set(routeDataToSave)
+        .then(() => alert(`Ruta "${routeName}" guardada/actualizada.`))
+        .catch(error => { console.error("Error al guardar ruta: ", error); alert("Error al guardar la ruta."); });
+}
+
+function loadRoute() {
+    const selectedRouteName = document.getElementById('savedRoutes').value;
+    if (!selectedRouteName) { alert("Selecciona una ruta para cargar."); return; }
+    
+    if (!database) return alert("Error de conexión a la base de datos.");
+    const routeRef = database.ref('/routes/' + selectedRouteName);
+    routeRef.once('value', (snapshot) => {
+        const loadedRouteData = snapshot.val();
+        if (loadedRouteData && loadedRouteData.points) {
+            clearCurrentRoute();
+            loadedRouteData.points.forEach(p_data => {
+                const newPointData = { ...p_data };
+                if (p_data.pointCategory === 'lineEndpoint') newPointData.schedule = { scheduledTime: p_data.schedule && p_data.schedule.scheduledTime ? new Date(p_data.schedule.scheduledTime) : null };
+                else if (p_data.pointCategory === 'intermediateStop') newPointData.scheduledTime = p_data.scheduledTime ? new Date(p_data.scheduledTime) : null;
+                createAndAddMarker(newPointData);
+            });
+            map.closePopup();
+            updateAllMarkerIconsAndLabels();
+            redrawRouteLine();
+            updateStopsList();
+            const boundsPoints = routePoints.filter(p => p.pointCategory !== 'waypoint');
+            if (boundsPoints.length > 0) { const bounds = L.latLngBounds(boundsPoints.map(p => [p.lat, p.lng])); if (bounds.isValid()) map.fitBounds(bounds, {padding: [50, 50]}); }
+            document.getElementById('routeName').value = selectedRouteName;
+        } else { alert("No se pudo cargar la ruta o está vacía."); }
+    });
+}
+
+function deleteRoute() {
+    const selectedRouteName = document.getElementById('savedRoutes').value;
+    if (!selectedRouteName) { alert("Selecciona una ruta para borrar."); return; }
+    if (confirm(`¿Estás seguro de que quieres borrar la ruta compartida "${selectedRouteName}"? Esta acción es irreversible.`)) {
+        if (!database) return alert("Error de conexión a la base de datos.");
+        database.ref('/routes/' + selectedRouteName).remove()
+            .then(() => alert(`Ruta "${selectedRouteName}" borrada de la base de datos.`))
+            .catch(error => { console.error("Error al borrar ruta: ", error); alert("Error al borrar la ruta."); });
+    }
+}
+
+function loadSavedRoutesLists() {
+    const savedRoutesSelect = document.getElementById('savedRoutes');
+    const routeToQueueSelect = document.getElementById('routeToQueue');
+
+    if (!database) {
+        const option = document.createElement('option');
+        option.textContent = "Error de conexión"; option.disabled = true;
+        savedRoutesSelect.appendChild(option.cloneNode(true));
+        routeToQueueSelect.appendChild(option);
+        return;
+    }
+    const routesRef = database.ref('/routes');
+    routesRef.on('value', (snapshot) => {
+        savedRoutesSelect.innerHTML = "";
+        routeToQueueSelect.innerHTML = "";
+        const routes = snapshot.val();
+        let hasRoutes = false;
+        if (routes) {
+            const routeNames = Object.keys(routes).sort();
+            routeNames.forEach(routeName => {
+                const option = document.createElement('option');
+                option.value = routeName; option.textContent = routeName;
+                savedRoutesSelect.appendChild(option.cloneNode(true));
+                routeToQueueSelect.appendChild(option.cloneNode(true));
+                hasRoutes = true;
+            });
+        }
+        if (!hasRoutes) {
+            const option = document.createElement('option');
+            option.textContent = "No hay rutas guardadas"; option.disabled = true;
+            savedRoutesSelect.appendChild(option.cloneNode(true));
+            routeToQueueSelect.appendChild(option);
+        }
+    });
+    updateRouteQueueDisplay();
+}
 
 // --- MODIFICACIÓN: FUNCIÓN DE PANTALLA COMPLETA AÑADIDA ---
 function toggleFullscreen() {
