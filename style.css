@@ -25,6 +25,7 @@ body, html {
     flex-direction: column;
     width: 100%;
     height: 100%;
+    position: relative; /* Para posicionar hijos absolutos como los botones */
 }
 
 #map { 
@@ -127,11 +128,47 @@ button:active {
 .btn-block { display: block; width: 100%; margin-bottom: 10px; }
 .btn-sm { padding: 5px 10px; font-size: 0.8em; margin: 0 2px; }
 
+
+/* --- BOTÓN PANTALLA COMPLETA --- */
+#fullscreenBtn {
+    position: absolute; /* Posicionado relativo a #appContainer */
+    top: 10px;
+    right: 10px;
+    z-index: 1001; /* Por encima de #toggleMapBtn y controles de Leaflet */
+    width: 40px;
+    height: 40px;
+    background-color: rgba(30, 30, 30, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    transition: background-color 0.2s;
+    box-sizing: border-box;
+}
+#fullscreenBtn:hover {
+    background-color: #333;
+}
+#fullscreenBtn svg {
+    width: 100%;
+    height: 100%;
+    stroke: var(--text-primary);
+}
+
+
 /* --- PANEL DE SEGUIMIENTO --- */
 #trackingDashboard { 
     padding: 15px; 
     background-color: var(--primary-surface); 
-    border-bottom: 1px solid var(--border-color); 
+    border-bottom: 1px solid var(--border-color);
+    /* MODIFICACIÓN: Preparado para ser flexible */
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1; /* Permite que ocupe el espacio disponible en el panel de controles */
+    min-height: 0;
 }
 #trackingDashboard > div:not(#etaDebugPanel) { 
     text-align: center; 
@@ -154,7 +191,17 @@ button:active {
 }
 #trackingStopsListContainer { 
     margin-top: 20px; 
-    text-align: left !important; 
+    text-align: left !important;
+    /* MODIFICACIÓN: Permitir que crezca y tenga su propio scroll */
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#trackingStopsList {
+    flex-grow: 1;
+    overflow-y: auto;
 }
 .tracking-stop-row { 
     display: flex; 
@@ -232,53 +279,57 @@ button:active {
     margin-bottom: 3px; 
 }
 
-/* --- ESTILOS PARA VISTA HORIZONTAL EN SEGUIMIENTO --- */
+/* --- MODIFICACIÓN: REFACTORIZACIÓN COMPLETA DE LA VISTA HORIZONTAL --- */
+
 #toggleMapBtn {
     position: absolute;
-    top: 20px;
-    left: 20px;
+    top: 10px;
+    left: 10px;
     z-index: 1000;
 }
 
 @media (orientation: landscape) {
+    /* Aplica a cualquier vista horizontal durante el seguimiento */
     body.landscape-tracking-active #appContainer {
-        flex-direction: row; /* Layout horizontal */
+        flex-direction: row;
     }
 
-    /* Por defecto en horizontal, el mapa está oculto */
+    /* VISTA PANEL (SIN MAPA): Por defecto en horizontal */
     body.landscape-tracking-active #map {
         display: none;
     }
     body.landscape-tracking-active #controls {
         width: 100vw; 
         height: 100vh;
-        overflow: hidden;
+        border-top: none; /* Sin borde superior en esta vista */
     }
     body.landscape-tracking-active #trackingDashboard {
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
+        justify-content: flex-start;
+        align-items: stretch;
+        padding: 4vh 4vw;
+        box-sizing: border-box;
     }
     body.landscape-tracking-active #timeDeviation {
-        font-size: 18vh; /* Mucho más grande */
+        font-size: 18vh;
+        flex-shrink: 0;
+        margin-bottom: 3vh;
     }
+    /* Ocultar elementos no necesarios para la vista de panel */
     body.landscape-tracking-active #mainControlsContainer,
-    body.landscape-tracking-active #trackingStopsListContainer,
-    body.landscape-tracking-active #toggleEtaDebugBtn,
-    body.landscape-tracking-active #etaDebugPanel,
     body.landscape-tracking-active #trackingDetails,
     body.landscape-tracking-active #trackingInfoDisplay,
     body.landscape-tracking-active #stopTrackingBtn,
-    body.landscape-tracking-active #manualStopNav + label,
-    body.landscape-tracking-active #manualStopNav,
-    body.landscape-tracking-active #prevStopBtn,
-    body.landscape-tracking-active #nextStopBtn {
-        display: none; /* Ocultar elementos no esenciales */
+    body.landscape-tracking-active #manualNavControls,
+    body.landscape-tracking-active #toggleEtaDebugBtn,
+    body.landscape-tracking-active #etaDebugPanel {
+        display: none;
+    }
+    /* Asegurarse que el contenedor de la lista de paradas sea visible */
+    body.landscape-tracking-active #trackingStopsListContainer {
+        display: flex;
     }
 
-    /* Cuando el mapa es visible en horizontal (split-screen) */
+    /* VISTA DIVIDIDA (CON MAPA): Cuando se añade la clase .map-visible */
     body.landscape-tracking-active.map-visible #map {
         display: block;
         width: 50vw;
@@ -287,29 +338,27 @@ button:active {
     body.landscape-tracking-active.map-visible #controls {
         width: 50vw;
         height: 100vh;
-        overflow-y: auto; /* Permitir scroll si el contenido se desborda */
+        overflow-y: auto; /* Permitir scroll general de nuevo */
     }
-     body.landscape-tracking-active.map-visible #trackingDashboard {
-        height: auto;
-        display: block; /* Vuelve a su estado normal */
+    /* Restaurar los estilos originales del dashboard para la vista dividida */
+    body.landscape-tracking-active.map-visible #trackingDashboard {
         justify-content: initial;
         align-items: initial;
+        padding: 15px; /* Padding original */
     }
     body.landscape-tracking-active.map-visible #timeDeviation {
-        font-size: 8vh; /* Tamaño intermedio para el panel derecho */
+        font-size: 8vh; /* Un tamaño grande pero no gigante */
+        margin: 5px 0 15px 0; /* Margen original */
     }
-    body.landscape-tracking-active.map-visible #trackingStopsListContainer,
+    /* Restaurar la visibilidad de todos los elementos del dashboard */
     body.landscape-tracking-active.map-visible #trackingDetails,
     body.landscape-tracking-active.map-visible #trackingInfoDisplay,
     body.landscape-tracking-active.map-visible #stopTrackingBtn,
-    body.landscape-tracking-active.map-visible #manualStopNav + label,
-    body.landscape-tracking-active.map-visible #manualStopNav,
-    body.landscape-tracking-active.map-visible #prevStopBtn,
-    body.landscape-tracking-active.map-visible #nextStopBtn {
-        display: block; /* Se vuelve a mostrar en split-view */
+    body.landscape-tracking-active.map-visible #manualNavControls,
+    body.landscape-tracking-active.map-visible #trackingStopsListContainer {
+        display: block; /* O 'flex' para los que lo necesiten */
     }
-    /* Reajustamos flex para que los elementos se muestren correctamente */
-    body.landscape-tracking-active.map-visible #trackingDetails{
+    body.landscape-tracking-active.map-visible #trackingDetails {
         display: flex;
     }
 }
