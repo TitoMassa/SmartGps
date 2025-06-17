@@ -164,10 +164,9 @@ button:active {
     padding: 15px; 
     background-color: var(--primary-surface); 
     border-bottom: 1px solid var(--border-color);
-    /* MODIFICACIÓN: Preparado para ser flexible */
     display: flex;
     flex-direction: column;
-    flex-grow: 1; /* Permite que ocupe el espacio disponible en el panel de controles */
+    flex-grow: 1; 
     min-height: 0;
 }
 #trackingDashboard > div:not(#etaDebugPanel) { 
@@ -192,7 +191,6 @@ button:active {
 #trackingStopsListContainer { 
     margin-top: 20px; 
     text-align: left !important;
-    /* MODIFICACIÓN: Permitir que crezca y tenga su propio scroll */
     flex-grow: 1;
     overflow-y: auto;
     display: flex;
@@ -279,8 +277,7 @@ button:active {
     margin-bottom: 3px; 
 }
 
-/* --- MODIFICACIÓN: REFACTORIZACIÓN COMPLETA DE LA VISTA HORIZONTAL --- */
-
+/* --- VISTA HORIZONTAL --- */
 #toggleMapBtn {
     position: absolute;
     top: 10px;
@@ -289,176 +286,150 @@ button:active {
 }
 
 @media (orientation: landscape) {
-    /* Aplica a cualquier vista horizontal durante el seguimiento */
-    body.landscape-tracking-active #appContainer {
-        flex-direction: row;
-    }
-
-    /* VISTA PANEL (SIN MAPA): Por defecto en horizontal */
-    body.landscape-tracking-active #map {
-        display: none;
-    }
-    body.landscape-tracking-active #controls {
-        width: 100vw; 
-        height: 100vh;
-        border-top: none; /* Sin borde superior en esta vista */
-    }
-    body.landscape-tracking-active #trackingDashboard {
-        justify-content: flex-start;
-        align-items: stretch;
-        padding: 4vh 4vw;
-        box-sizing: border-box;
-    }
-    body.landscape-tracking-active #timeDeviation {
-        font-size: 18vh;
-        flex-shrink: 0;
-        margin-bottom: 3vh;
-    }
-    /* Ocultar elementos no necesarios para la vista de panel */
+    body.landscape-tracking-active #appContainer { flex-direction: row; }
+    body.landscape-tracking-active #map { display: none; }
+    body.landscape-tracking-active #controls { width: 100vw; height: 100vh; border-top: none; }
+    body.landscape-tracking-active #trackingDashboard { justify-content: flex-start; align-items: stretch; padding: 4vh 4vw; box-sizing: border-box; }
+    body.landscape-tracking-active #timeDeviation { font-size: 18vh; flex-shrink: 0; margin-bottom: 3vh; }
     body.landscape-tracking-active #mainControlsContainer,
     body.landscape-tracking-active #trackingDetails,
     body.landscape-tracking-active #trackingInfoDisplay,
     body.landscape-tracking-active #stopTrackingBtn,
     body.landscape-tracking-active #manualNavControls,
     body.landscape-tracking-active #toggleEtaDebugBtn,
-    body.landscape-tracking-active #etaDebugPanel {
-        display: none;
-    }
-    /* Asegurarse que el contenedor de la lista de paradas sea visible */
-    body.landscape-tracking-active #trackingStopsListContainer {
-        display: flex;
-    }
-
-    /* VISTA DIVIDIDA (CON MAPA): Cuando se añade la clase .map-visible */
-    body.landscape-tracking-active.map-visible #map {
-        display: block;
-        width: 50vw;
-        height: 100vh;
-    }
-    body.landscape-tracking-active.map-visible #controls {
-        width: 50vw;
-        height: 100vh;
-        overflow-y: auto; /* Permitir scroll general de nuevo */
-    }
-    /* Restaurar los estilos originales del dashboard para la vista dividida */
-    body.landscape-tracking-active.map-visible #trackingDashboard {
-        justify-content: initial;
-        align-items: initial;
-        padding: 15px; /* Padding original */
-    }
-    body.landscape-tracking-active.map-visible #timeDeviation {
-        font-size: 8vh; /* Un tamaño grande pero no gigante */
-        margin: 5px 0 15px 0; /* Margen original */
-    }
-    /* Restaurar la visibilidad de todos los elementos del dashboard */
+    body.landscape-tracking-active #etaDebugPanel { display: none; }
+    body.landscape-tracking-active #trackingStopsListContainer { display: flex; }
+    body.landscape-tracking-active.map-visible #map { display: block; width: 50vw; height: 100vh; }
+    body.landscape-tracking-active.map-visible #controls { width: 50vw; height: 100vh; overflow-y: auto; }
+    body.landscape-tracking-active.map-visible #trackingDashboard { justify-content: initial; align-items: initial; padding: 15px; }
+    body.landscape-tracking-active.map-visible #timeDeviation { font-size: 8vh; margin: 5px 0 15px 0; }
     body.landscape-tracking-active.map-visible #trackingDetails,
     body.landscape-tracking-active.map-visible #trackingInfoDisplay,
     body.landscape-tracking-active.map-visible #stopTrackingBtn,
     body.landscape-tracking-active.map-visible #manualNavControls,
-    body.landscape-tracking-active.map-visible #trackingStopsListContainer {
-        display: block; /* O 'flex' para los que lo necesiten */
-    }
-    body.landscape-tracking-active.map-visible #trackingDetails {
-        display: flex;
-    }
+    body.landscape-tracking-active.map-visible #trackingStopsListContainer { display: block; }
+    body.landscape-tracking-active.map-visible #trackingDetails { display: flex; }
 }
 
 /* --- ESTILOS DE MARCADORES Y POPUPS --- */
-.leaflet-div-icon { 
-    background: transparent; 
-    border: none; 
-    text-align: center; 
-    font-weight: bold; 
-    color: white; 
-}
-.waypoint-marker-icon { 
-    background-color:#888888 !important; 
-    width: 10px !important; 
-    height: 10px !important; 
-    border-radius: 50% !important; 
-    border: 1px solid #FFFFFF !important; 
-    box-sizing: border-box !important; 
-}
-.intermediate-stop-icon { 
-    background-color:#2196F3 !important; 
-    padding: 5px 8px !important; 
-    border-radius: 5px !important; 
-    color: white !important; 
-    font-size:12px !important; 
-    font-weight:bold !important; 
-    border: 1px solid white !important; 
-    min-width: 15px !important; 
-    text-align: center !important; 
-}
-.user-location-icon { 
-    background-color: var(--accent-blue) !important; 
-    border-radius: 50%; 
-    width: 16px !important; 
-    height: 16px !important; 
-    border: 2px solid white; 
-    box-shadow: 0 0 0 2px var(--accent-blue); 
-}
-.leaflet-popup-content-wrapper, .leaflet-popup-tip { 
-    background: var(--secondary-surface); 
-    color: var(--text-primary); 
-    box-shadow: 0 3px 14px rgba(0,0,0,0.4); 
-    border-radius: 6px; 
-}
-.leaflet-popup-content { 
-    margin: 15px; 
-}
-.popup-form-field { 
-    margin-bottom: 10px; 
-}
-.popup-form-field-group { 
-    display: flex; 
-    gap: 8px; 
-    align-items: flex-end; 
-}
-.popup-form-field-group > div { 
-    flex-grow: 1; 
-}
-.popup-form-field-group > div:last-child { 
-    flex-grow: 0; 
-    flex-basis: 70px; 
-}
-.popup-form-field label { 
-    font-size: 0.9em; 
-    font-weight: 500; 
-}
-.popup-form-field input { 
-    width: 100%; 
-    box-sizing: border-box; 
-}
-.popup-actions { 
-    margin-top: 15px; 
-    text-align: right; 
-}
+.leaflet-div-icon { background: transparent; border: none; text-align: center; font-weight: bold; color: white; }
+.waypoint-marker-icon { background-color:#888888 !important; width: 10px !important; height: 10px !important; border-radius: 50% !important; border: 1px solid #FFFFFF !important; box-sizing: border-box !important; }
+.intermediate-stop-icon { background-color:#2196F3 !important; padding: 5px 8px !important; border-radius: 5px !important; color: white !important; font-size:12px !important; font-weight:bold !important; border: 1px solid white !important; min-width: 15px !important; text-align: center !important; }
+.user-location-icon { background-color: var(--accent-blue) !important; border-radius: 50%; width: 16px !important; height: 16px !important; border: 2px solid white; box-shadow: 0 0 0 2px var(--accent-blue); }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--secondary-surface); color: var(--text-primary); box-shadow: 0 3px 14px rgba(0,0,0,0.4); border-radius: 6px; }
+.leaflet-popup-content { margin: 15px; }
+.popup-form-field { margin-bottom: 10px; }
+.popup-form-field-group { display: flex; gap: 8px; align-items: flex-end; }
+.popup-form-field-group > div { flex-grow: 1; }
+.popup-form-field-group > div:last-child { flex-grow: 0; flex-basis: 70px; }
+.popup-form-field label { font-size: 0.9em; font-weight: 500; }
+.popup-form-field input { width: 100%; box-sizing: border-box; }
+.popup-actions { margin-top: 15px; text-align: right; }
 
 /* --- PANEL DE DEBUG ETA --- */
-#etaDebugPanel { 
-    background-color: var(--primary-surface); 
-    padding: 10px; 
-    margin: 10px 0px; 
-    border: 1px solid var(--border-color); 
-    border-radius: 6px; 
-    font-size: 0.85em; 
-    text-align: left; 
-    max-height: 200px; 
-    overflow-y: auto; 
+#etaDebugPanel { background-color: var(--primary-surface); padding: 10px; margin: 10px 0px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85em; text-align: left; max-height: 200px; overflow-y: auto; }
+#etaDebugPanel h4, #etaDebugPanel h5 { color: #58a6ff; margin-top: 5px; margin-bottom: 5px; padding-bottom: 3px; border-bottom: 1px solid var(--border-color); }
+#etaDebugPanel p { margin: 3px 0; line-height: 1.4; }
+#etaDebugPanel hr { border-color: var(--border-color); margin: 8px 0; }
+
+
+/* --- MODAL DE LOGIN (AÑADIDO) --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    backdrop-filter: blur(5px);
+    transition: opacity 0.3s ease;
 }
-#etaDebugPanel h4, #etaDebugPanel h5 { 
-    color: #58a6ff; 
-    margin-top: 5px; 
-    margin-bottom: 5px; 
-    padding-bottom: 3px; 
-    border-bottom: 1px solid var(--border-color); 
+
+.modal-content {
+    background-color: var(--primary-surface);
+    padding: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    text-align: center;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.5);
 }
-#etaDebugPanel p { 
-    margin: 3px 0; 
-    line-height: 1.4; 
+.modal-content h2 {
+    margin-top: 0;
+    color: var(--text-primary);
 }
-#etaDebugPanel hr { 
-    border-color: var(--border-color); 
-    margin: 8px 0; 
+.modal-content p {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+}
+
+/* --- LISTA DE ESTADO DE CHOFERES (AÑADIDO) --- */
+#driverStatusList {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.driver-status-item {
+    background-color: var(--secondary-surface);
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    border-left: 4px solid #888; /* Gris por defecto (inactivo) */
+    transition: border-left-color 0.3s ease;
+}
+
+.driver-status-item.tracking {
+    border-left-color: #3fb950; /* Verde si está en ruta */
+}
+
+.driver-status-item p {
+    margin: 0 0 4px 0;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.driver-status-item p.driver-name {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.driver-status-item .driver-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+.driver-details-deviation.adelantado { color: #3fb950; }
+.driver-details-deviation.atrasado { color: #f85149; }
+
+
+/* --- MARCADORES DE OTROS CHOFERES (AÑADIDO) --- */
+.other-driver-marker-icon {
+    background-color: #ff9800 !important; /* Naranja para distinguirlos */
+    border-radius: 50%;
+    width: 16px !important;
+    height: 16px !important;
+    border: 2px solid white;
+    box-shadow: 0 0 0 2px #ff9800;
+}
+.other-driver-marker-icon .marker-label {
+    position: absolute;
+    top: -22px; /* Un poco más arriba para que no tape el punto */
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none; /* Evita que la etiqueta intercepte clics */
 }
