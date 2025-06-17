@@ -1,0 +1,32 @@
+name: Deploy to GitHub Pages
+
+on:
+  # Se ejecuta en los pushes al branch 'main' (o 'master' si usas ese)
+  push:
+    branches:
+      - main
+  # Te permite ejecutar este workflow manualmente desde la pestaña Actions
+  workflow_dispatch:
+
+# Los trabajos se ejecutan en paralelo por defecto, pero solo tenemos uno
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Clona tu repositorio para tener acceso a tus archivos
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. ¡EL PASO CLAVE! Crea el archivo firebase-config.js usando el Secret
+      - name: Create Firebase config file
+        run: |
+          echo "${{ secrets.FIREBASE_CONFIG_JS_CONTENT }}" > firebase-config.js
+        
+      # 3. Despliega los archivos (incluyendo el recién creado) a la rama gh-pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: . # El directorio a publicar (la raíz en este caso)
+          cname: ${{ secrets.CNAME }} # Opcional: si usas un dominio personalizado
