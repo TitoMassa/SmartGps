@@ -1,0 +1,415 @@
+/* --- ESTILOS GENERALES Y LAYOUT (REFACTORIZADO) --- */
+:root {
+    --dark-bg: #000000;
+    --primary-surface: #121212;
+    --secondary-surface: #1e1e1e;
+    --border-color: #2c2c2c;
+    --text-primary: #e0e0e0;
+    --text-secondary: #a0a0a0;
+    --accent-blue: #007bff;
+}
+
+body, html {
+    margin: 0; 
+    padding: 0; 
+    width: 100%; 
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--dark-bg);
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+#appContainer {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+}
+
+#map { 
+    height: 55vh; 
+    width: 100%; 
+    background-color: #333; 
+}
+
+#controls { 
+    height: 45vh; 
+    overflow-y: auto; 
+    background-color: var(--primary-surface); 
+    border-top: 1px solid var(--border-color); 
+    display: flex; 
+    flex-direction: column; 
+}
+
+/* --- ESTILOS PARA SECCIONES COLAPSABLES --- */
+.accordion-header { 
+    background-color: var(--secondary-surface); 
+    padding: 12px 15px; 
+    cursor: pointer; 
+    border-bottom: 1px solid var(--border-color); 
+    font-weight: bold; 
+    font-size: 1.1em; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    transition: background-color 0.2s ease; 
+}
+.accordion-header:hover { 
+    background-color: #30363d; 
+}
+.accordion-header::after { 
+    content: '▼'; 
+    font-size: 0.8em; 
+    transition: transform 0.3s ease; 
+}
+.accordion-header.active::after { 
+    transform: rotate(180deg); 
+}
+.accordion-content { 
+    padding: 15px; 
+    border-bottom: 1px solid var(--border-color); 
+    display: none; 
+}
+.accordion-content.active { 
+    display: block; 
+}
+
+/* --- ESTILOS DE FORMULARIOS Y BOTONES --- */
+h3, h4 { 
+    color: #FFFFFF; 
+    margin-top: 0; 
+    margin-bottom: 12px; 
+    border-bottom: 1px solid #444; 
+    padding-bottom: 8px; 
+}
+label { 
+    display: block; 
+    margin-bottom: 5px; 
+    font-size: 0.9em; 
+    font-weight: 500; 
+}
+input[type="text"], input[type="datetime-local"], input[type="number"], select { 
+    width: 100%; 
+    padding: 10px; 
+    margin-bottom: 12px; 
+    background-color: var(--dark-bg); 
+    color: var(--text-primary); 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; 
+    box-sizing: border-box; 
+    transition: border-color 0.2s, box-shadow 0.2s; 
+}
+input:focus, select:focus { 
+    outline: none; 
+    border-color: var(--accent-blue); 
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25); 
+}
+button { 
+    padding: 10px 15px; 
+    color: white; 
+    border: none; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    margin-right: 8px; 
+    margin-bottom: 8px; 
+    font-size: 0.9em; 
+    font-weight: 500; 
+    transition: background-color 0.2s ease, transform 0.1s ease; 
+}
+button:active { 
+    transform: scale(0.98); 
+}
+.btn-primary { background-color: #4CAF50; } .btn-primary:hover { background-color: #45a049; }
+.btn-danger { background-color: #f44336; } .btn-danger:hover { background-color: #da190b; }
+.btn-secondary { background-color: var(--accent-blue); } .btn-secondary:hover { background-color: #0056b3; }
+.btn-info { background-color: #17a2b8; } .btn-info:hover { background-color: #117a8b; }
+.btn-block { display: block; width: 100%; margin-bottom: 10px; }
+.btn-sm { padding: 5px 10px; font-size: 0.8em; margin: 0 2px; }
+
+/* --- PANEL DE SEGUIMIENTO --- */
+#trackingDashboard { 
+    padding: 15px; 
+    background-color: var(--primary-surface); 
+    border-bottom: 1px solid var(--border-color); 
+}
+#trackingDashboard > div:not(#etaDebugPanel) { 
+    text-align: center; 
+}
+#trackingInfoDisplay { 
+    font-size: 1.1em; 
+    font-weight: bold; 
+    margin-bottom: 10px; 
+}
+#timeDeviation { 
+    font-size: 3.5em; 
+    font-weight: bold; 
+    margin: 5px 0 15px 0; 
+    transition: font-size 0.3s ease; 
+}
+#trackingDetails { 
+    display: flex; 
+    justify-content: space-around; 
+    font-size: 1em; 
+}
+#trackingStopsListContainer { 
+    margin-top: 20px; 
+    text-align: left !important; 
+}
+.tracking-stop-row { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    padding: 8px 5px; 
+    border-bottom: 1px solid var(--border-color); 
+    font-size: 0.9em; 
+}
+.tracking-stop-row:last-child { 
+    border-bottom: none; 
+}
+.tracking-stop-row.is-next-stop { 
+    background-color: rgba(0, 123, 255, 0.15); 
+    font-weight: bold; 
+}
+.tracking-stop-name { 
+    flex: 3; 
+    text-overflow: ellipsis; 
+    overflow: hidden; 
+    white-space: nowrap; 
+}
+.tracking-stop-time { 
+    flex: 2; 
+    text-align: center; 
+    color: var(--text-secondary); 
+}
+.tracking-stop-eta { 
+    flex: 1.5; 
+    text-align: right; 
+    font-weight: bold; 
+}
+
+/* --- LISTA DE PUNTOS INTERACTIVA --- */
+#stopsList { 
+    max-height: 250px; 
+    overflow-y: auto; 
+}
+.stop-item { 
+    background-color: var(--secondary-surface); 
+    padding: 10px; 
+    margin-bottom: 8px; 
+    border-radius: 6px; 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    border-left: 4px solid transparent; 
+    transition: background-color 0.2s ease; 
+}
+.stop-item-info { 
+    flex-grow: 1; 
+}
+.stop-item-actions { 
+    flex-shrink: 0; 
+}
+.stop-item:hover { 
+    background-color: #30363d; 
+}
+.stop-item.next-stop-highlight { 
+    background-color: var(--accent-blue); 
+    font-weight: bold; 
+}
+.stop-item.line-endpoint-highlight { 
+    border-left-color: #ffc107; 
+}
+.stop-item p { 
+    margin: 0; 
+    font-size: 0.8em; 
+    color: var(--text-secondary); 
+}
+.stop-item p.stop-name { 
+    font-size: 1em; 
+    font-weight: bold; 
+    color: var(--text-primary); 
+    margin-bottom: 3px; 
+}
+
+/* --- ESTILOS PARA VISTA HORIZONTAL EN SEGUIMIENTO --- */
+#toggleMapBtn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+}
+
+@media (orientation: landscape) {
+    body.landscape-tracking-active #appContainer {
+        flex-direction: row; /* Layout horizontal */
+    }
+
+    /* Por defecto en horizontal, el mapa está oculto */
+    body.landscape-tracking-active #map {
+        display: none;
+    }
+    body.landscape-tracking-active #controls {
+        width: 100vw; 
+        height: 100vh;
+        overflow: hidden;
+    }
+    body.landscape-tracking-active #trackingDashboard {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+    body.landscape-tracking-active #timeDeviation {
+        font-size: 18vh; /* Mucho más grande */
+    }
+    body.landscape-tracking-active #mainControlsContainer,
+    body.landscape-tracking-active #trackingStopsListContainer,
+    body.landscape-tracking-active #toggleEtaDebugBtn,
+    body.landscape-tracking-active #etaDebugPanel,
+    body.landscape-tracking-active #trackingDetails,
+    body.landscape-tracking-active #trackingInfoDisplay,
+    body.landscape-tracking-active #stopTrackingBtn,
+    body.landscape-tracking-active #manualStopNav + label,
+    body.landscape-tracking-active #manualStopNav,
+    body.landscape-tracking-active #prevStopBtn,
+    body.landscape-tracking-active #nextStopBtn {
+        display: none; /* Ocultar elementos no esenciales */
+    }
+
+    /* Cuando el mapa es visible en horizontal (split-screen) */
+    body.landscape-tracking-active.map-visible #map {
+        display: block;
+        width: 50vw;
+        height: 100vh;
+    }
+    body.landscape-tracking-active.map-visible #controls {
+        width: 50vw;
+        height: 100vh;
+        overflow-y: auto; /* Permitir scroll si el contenido se desborda */
+    }
+     body.landscape-tracking-active.map-visible #trackingDashboard {
+        height: auto;
+        display: block; /* Vuelve a su estado normal */
+        justify-content: initial;
+        align-items: initial;
+    }
+    body.landscape-tracking-active.map-visible #timeDeviation {
+        font-size: 8vh; /* Tamaño intermedio para el panel derecho */
+    }
+    body.landscape-tracking-active.map-visible #trackingStopsListContainer,
+    body.landscape-tracking-active.map-visible #trackingDetails,
+    body.landscape-tracking-active.map-visible #trackingInfoDisplay,
+    body.landscape-tracking-active.map-visible #stopTrackingBtn,
+    body.landscape-tracking-active.map-visible #manualStopNav + label,
+    body.landscape-tracking-active.map-visible #manualStopNav,
+    body.landscape-tracking-active.map-visible #prevStopBtn,
+    body.landscape-tracking-active.map-visible #nextStopBtn {
+        display: block; /* Se vuelve a mostrar en split-view */
+    }
+    /* Reajustamos flex para que los elementos se muestren correctamente */
+    body.landscape-tracking-active.map-visible #trackingDetails{
+        display: flex;
+    }
+}
+
+/* --- ESTILOS DE MARCADORES Y POPUPS --- */
+.leaflet-div-icon { 
+    background: transparent; 
+    border: none; 
+    text-align: center; 
+    font-weight: bold; 
+    color: white; 
+}
+.waypoint-marker-icon { 
+    background-color:#888888 !important; 
+    width: 10px !important; 
+    height: 10px !important; 
+    border-radius: 50% !important; 
+    border: 1px solid #FFFFFF !important; 
+    box-sizing: border-box !important; 
+}
+.intermediate-stop-icon { 
+    background-color:#2196F3 !important; 
+    padding: 5px 8px !important; 
+    border-radius: 5px !important; 
+    color: white !important; 
+    font-size:12px !important; 
+    font-weight:bold !important; 
+    border: 1px solid white !important; 
+    min-width: 15px !important; 
+    text-align: center !important; 
+}
+.user-location-icon { 
+    background-color: var(--accent-blue) !important; 
+    border-radius: 50%; 
+    width: 16px !important; 
+    height: 16px !important; 
+    border: 2px solid white; 
+    box-shadow: 0 0 0 2px var(--accent-blue); 
+}
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { 
+    background: var(--secondary-surface); 
+    color: var(--text-primary); 
+    box-shadow: 0 3px 14px rgba(0,0,0,0.4); 
+    border-radius: 6px; 
+}
+.leaflet-popup-content { 
+    margin: 15px; 
+}
+.popup-form-field { 
+    margin-bottom: 10px; 
+}
+.popup-form-field-group { 
+    display: flex; 
+    gap: 8px; 
+    align-items: flex-end; 
+}
+.popup-form-field-group > div { 
+    flex-grow: 1; 
+}
+.popup-form-field-group > div:last-child { 
+    flex-grow: 0; 
+    flex-basis: 70px; 
+}
+.popup-form-field label { 
+    font-size: 0.9em; 
+    font-weight: 500; 
+}
+.popup-form-field input { 
+    width: 100%; 
+    box-sizing: border-box; 
+}
+.popup-actions { 
+    margin-top: 15px; 
+    text-align: right; 
+}
+
+/* --- PANEL DE DEBUG ETA --- */
+#etaDebugPanel { 
+    background-color: var(--primary-surface); 
+    padding: 10px; 
+    margin: 10px 0px; 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; 
+    font-size: 0.85em; 
+    text-align: left; 
+    max-height: 200px; 
+    overflow-y: auto; 
+}
+#etaDebugPanel h4, #etaDebugPanel h5 { 
+    color: #58a6ff; 
+    margin-top: 5px; 
+    margin-bottom: 5px; 
+    padding-bottom: 3px; 
+    border-bottom: 1px solid var(--border-color); 
+}
+#etaDebugPanel p { 
+    margin: 3px 0; 
+    line-height: 1.4; 
+}
+#etaDebugPanel hr { 
+    border-color: var(--border-color); 
+    margin: 8px 0; 
+}
