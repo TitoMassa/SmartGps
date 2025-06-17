@@ -341,6 +341,7 @@
         let deviationDisplayIntervalId = null; // Para actualizar la UI del desvío
         let latestDeviationMillis = null;    // Para almacenar el último cálculo de desvío
         let isEtaDebugVisible = false; // NUEVO: Para el panel de debug ETA
+        let lastDeviationCalculation = {}; // NUEVO: Para almacenar detalles del cálculo para el debug
 
         const CACHE_PREFIX = 'smartMovePro_unidir_simple_route_';
         const ROUTE_QUEUE_CACHE_KEY = 'smartMovePro_unidir_simple_routeQueue';
@@ -1157,40 +1158,135 @@
                 if (isEtaDebugVisible) updateEtaDebugInfo(); // NUEVO
             }
         }
+
+        // MODIFICADO: Cálculo de desvío basado en la traza completa del segmento
         function calculateTimeDeviation(currentUserGeoPosition) {
+            lastDeviationCalculation = {}; // Reset debug info
+
             if (!isTracking || !trackingState.activeLegPoints || trackingState.activeLegPoints.length === 0 || !currentUserGeoPosition) {
-                latestDeviationMillis = null; return;
+                latestDeviationMillis = null;
+                lastDeviationCalculation.reason = "Seguimiento inactivo o sin datos.";
+                return;
             }
-            const currentTime = new Date().getTime(); const legPoints = trackingState.activeLegPoints; let pointA = null, pointB = null;
-            for (let i = currentSegmentStartIndex; i >= 0; i--) { if (legPoints[i].pointCategory !== 'waypoint' && legPoints[i].effectiveScheduledTime) { pointA = legPoints[i]; break; } }
+
+            const currentTime = new Date().getTime();
+            const legPoints = trackingState.activeLegPoints;
+            let pointA = null, pointB = null;
+
+            for (let i = currentSegmentStartIndex; i >= 0; i--) {
+                if (legPoints[i].pointCategory !== 'waypoint' && legPoints[i].effectiveScheduledTime) { pointA = legPoints[i]; break; }
+            }
             if (!pointA && legPoints[0] && legPoints[0].pointCategory !== 'waypoint' && legPoints[0].effectiveScheduledTime) { pointA = legPoints[0]; }
-            for (let i = currentSegmentStartIndex + 1; i < legPoints.length; i++) { if (legPoints[i].pointCategory !== 'waypoint' && legPoints[i].effectiveScheduledTime) { pointB = legPoints[i]; break; } }
+            
+            for (let i = currentSegmentStartIndex + 1; i < legPoints.length; i++) {
+                if (legPoints[i].pointCategory !== 'waypoint' && legPoints[i].effectiveScheduledTime) { pointB = legPoints[i]; break; }
+            }
             if (!pointB && legPoints[legPoints.length - 1] && legPoints[legPoints.length - 1].pointCategory !== 'waypoint' && legPoints[legPoints.length - 1].effectiveScheduledTime) {
                 if (!pointA || pointA.id !== legPoints[legPoints.length - 1].id) { pointB = legPoints[legPoints.length - 1]; }
             }
+
             if (!pointA || !pointB) {
-                if (pointA && pointA.effectiveScheduledTime) { latestDeviationMillis = new Date(pointA.effectiveScheduledTime).getTime() - currentTime; }
-                else if (pointB && pointB.effectiveScheduledTime) { latestDeviationMillis = new Date(pointB.effectiveScheduledTime).getTime() - currentTime; }
-                else { latestDeviationMillis = null; }
+                let reason = "No se pudo determinar un segmento A->B válido.";
+                if (pointA && pointA.effectiveScheduledTime) {
+                    latestDeviationMillis = new Date(pointA.effectiveScheduledTime).getTime() - currentTime;
+                    reason = `Solo se encontró el punto A (${pointA.name}). Desvío respecto a su hora.`;
+                } else if (pointB && pointB.effectiveScheduledTime) {
+                    latestDeviationMillis = new Date(pointB.effectiveScheduledTime).getTime() - currentTime;
+                    reason = `Solo se encontró el punto B (${pointB.name}). Desvío respecto a su hora.`;
+                } else { latestDeviationMillis = null; }
+                lastDeviationCalculation = { deviation: latestDeviationMillis, reason: reason, pointA: pointA?.name, pointB: pointB?.name };
                 return;
             }
-            if (pointA.id === pointB.id) { latestDeviationMillis = new Date(pointA.effectiveScheduledTime).getTime() - currentTime; return; }
-            const timeA = new Date(pointA.effectiveScheduledTime).getTime(); const timeB = new Date(pointB.effectiveScheduledTime).getTime();
-            const segmentTotalScheduledMillis = timeB - timeA;
-            if (segmentTotalScheduledMillis < 0) { latestDeviationMillis = timeB - currentTime; return; }
-            if (segmentTotalScheduledMillis === 0) { latestDeviationMillis = timeA - currentTime; return; }
-            const latLngA = L.latLng(pointA.lat, pointA.lng); const latLngB = L.latLng(pointB.lat, pointB.lng);
-            const currentUserLatLng = L.latLng(currentUserGeoPosition.coords.latitude, currentUserGeoPosition.coords.longitude);
-            const distanceTotalSegment = latLngA.distanceTo(latLngB); let progressPercentage;
-            if (distanceTotalSegment < 1.0) { progressPercentage = 0.0; }
-            else {
-                const distUserToA = currentUserLatLng.distanceTo(latLngA); const distUserToB = currentUserLatLng.distanceTo(latLngB);
-                let distanceAlongSegmentUser = (Math.pow(distanceTotalSegment, 2) + Math.pow(distUserToA, 2) - Math.pow(distUserToB, 2)) / (2 * distanceTotalSegment);
-                distanceAlongSegmentUser = Math.max(0, Math.min(distanceAlongSegmentUser, distanceTotalSegment));
-                progressPercentage = distanceAlongSegmentUser / distanceTotalSegment;
+            
+            if (pointA.id === pointB.id) {
+                latestDeviationMillis = new Date(pointA.effectiveScheduledTime).getTime() - currentTime;
+                lastDeviationCalculation = { deviation: latestDeviationMillis, reason: "Punto A y B son el mismo.", pointA: pointA.name, pointB: pointB.name };
+                return;
             }
+            
+            lastDeviationCalculation.pointA = pointA.name;
+            lastDeviationCalculation.pointB = pointB.name;
+            
+            const timeA = new Date(pointA.effectiveScheduledTime).getTime();
+            const timeB = new Date(pointB.effectiveScheduledTime).getTime();
+            const segmentTotalScheduledMillis = timeB - timeA;
+
+            if (segmentTotalScheduledMillis < 0) {
+                latestDeviationMillis = timeB - currentTime;
+                lastDeviationCalculation = { deviation: latestDeviationMillis, reason: "El segmento tiene duración negativa. Usando hora de B.", ...lastDeviationCalculation };
+                return;
+            }
+            if (segmentTotalScheduledMillis === 0) {
+                latestDeviationMillis = timeA - currentTime;
+                lastDeviationCalculation = { deviation: latestDeviationMillis, reason: "El segmento tiene duración cero. Usando hora de A.", ...lastDeviationCalculation };
+                return;
+            }
+
+            const startIndex = legPoints.findIndex(p => p.id === pointA.id);
+            const endIndex = legPoints.findIndex(p => p.id === pointB.id);
+            const segmentPathPoints = legPoints.slice(startIndex, endIndex + 1);
+
+            let totalSegmentDistanceAlongTrace = 0;
+            const subSegmentLengths = [];
+            for (let i = 0; i < segmentPathPoints.length - 1; i++) {
+                const dist = L.latLng(segmentPathPoints[i].lat, segmentPathPoints[i].lng).distanceTo(L.latLng(segmentPathPoints[i+1].lat, segmentPathPoints[i+1].lng));
+                totalSegmentDistanceAlongTrace += dist;
+                subSegmentLengths.push(dist);
+            }
+            
+            let progressPercentage;
+
+            if (totalSegmentDistanceAlongTrace < 1.0) {
+                progressPercentage = 0.0;
+                lastDeviationCalculation.reason = "Distancia del segmento en la traza es casi cero.";
+            } else {
+                const currentUserLatLng = L.latLng(currentUserGeoPosition.coords.latitude, currentUserGeoPosition.coords.longitude);
+                let minDistanceOffTrace = Infinity;
+                let finalProgressAlongTrace = 0;
+                let distanceAccumulatedOnTrace = 0;
+
+                for (let i = 0; i < segmentPathPoints.length - 1; i++) {
+                    const p1 = L.latLng(segmentPathPoints[i].lat, segmentPathPoints[i].lng);
+                    const p2 = L.latLng(segmentPathPoints[i+1].lat, segmentPathPoints[i+1].lng);
+                    const segmentLength = subSegmentLengths[i];
+                    
+                    let currentDistanceOffTrace;
+                    let currentProgressOnSegment = 0;
+
+                    if (segmentLength >= 1.0) {
+                        const distUserToP1 = currentUserLatLng.distanceTo(p1);
+                        const distUserToP2 = currentUserLatLng.distanceTo(p2);
+                        currentProgressOnSegment = (Math.pow(segmentLength, 2) + Math.pow(distUserToP1, 2) - Math.pow(distUserToP2, 2)) / (2 * segmentLength);
+
+                        if (currentProgressOnSegment < 0) {
+                            currentDistanceOffTrace = distUserToP1;
+                        } else if (currentProgressOnSegment > segmentLength) {
+                            currentDistanceOffTrace = distUserToP2;
+                        } else {
+                            currentDistanceOffTrace = Math.sqrt(Math.max(0, Math.pow(distUserToP1, 2) - Math.pow(currentProgressOnSegment, 2)));
+                        }
+                    } else {
+                        currentDistanceOffTrace = currentUserLatLng.distanceTo(p1);
+                    }
+                    
+                    if (currentDistanceOffTrace < minDistanceOffTrace) {
+                        minDistanceOffTrace = currentDistanceOffTrace;
+                        finalProgressAlongTrace = distanceAccumulatedOnTrace + Math.max(0, Math.min(currentProgressOnSegment, segmentLength));
+                    }
+                    distanceAccumulatedOnTrace += segmentLength;
+                }
+
+                progressPercentage = finalProgressAlongTrace / totalSegmentDistanceAlongTrace;
+                progressPercentage = Math.max(0, Math.min(progressPercentage, 1)); // Clamp
+
+                lastDeviationCalculation.totalSegmentDistance = totalSegmentDistanceAlongTrace;
+                lastDeviationCalculation.progressDistance = finalProgressAlongTrace;
+            }
+            
+            lastDeviationCalculation.progressPercentage = progressPercentage;
             const expectedTimeAtCurrentPosition = timeA + (segmentTotalScheduledMillis * progressPercentage);
             latestDeviationMillis = expectedTimeAtCurrentPosition - currentTime;
+            lastDeviationCalculation.deviation = latestDeviationMillis;
         }
 
         // NUEVA FUNCIÓN: Actualiza el display del desvío
@@ -1317,6 +1413,7 @@
             }
         }
 
+        // MODIFICADO: Muestra detalles del cálculo de progreso
         function updateEtaDebugInfo() {
             if (!isEtaDebugVisible || !isTracking) {
                 const debugPanel = document.getElementById('etaDebugPanel');
@@ -1327,12 +1424,24 @@
             const debugPanel = document.getElementById('etaDebugPanel');
             let debugHtml = `<h4>Detalles Cálculo ETA</h4>`;
             const nowMillis = new Date().getTime();
-            const deviationMillisForCalc = latestDeviationMillis === null ? 0 : latestDeviationMillis; // Use 0 if null for calc, but display actual
+            const deviationMillisForCalc = latestDeviationMillis === null ? 0 : latestDeviationMillis;
 
             debugHtml += `<p><strong>Hora Actual (ms):</strong> ${nowMillis}</p>`;
             debugHtml += `<p><strong>Desvío Actual (ms):</strong> ${latestDeviationMillis === null ? 'N/A (calculando)' : latestDeviationMillis} (${formatMillisToMMSS(latestDeviationMillis)})</p>`;
-            debugHtml += `<p><strong>Índice Segmento Actual:</strong> ${currentSegmentStartIndex}</p>`;
+            debugHtml += `<p><strong>Índice Punto Actual:</strong> ${currentSegmentStartIndex}</p>`;
             
+            // --- NUEVO BLOQUE DE DEBUG DE PROGRESO ---
+            debugHtml += `<hr><h4>Cálculo de Progreso</h4>`;
+            if (lastDeviationCalculation && lastDeviationCalculation.progressPercentage !== undefined) {
+                debugHtml += `<p><strong>Segmento Lógico:</strong> ${lastDeviationCalculation.pointA || 'N/A'} → ${lastDeviationCalculation.pointB || 'N/A'}</p>`;
+                debugHtml += `<p><strong>Distancia Total (traza):</strong> ${lastDeviationCalculation.totalSegmentDistance?.toFixed(0) || 'N/A'} m</p>`;
+                debugHtml += `<p><strong>Progreso en Traza:</strong> ${lastDeviationCalculation.progressDistance?.toFixed(0) || 'N/A'} m</p>`;
+                debugHtml += `<p style="font-weight: bold;">Porcentaje Recorrido: ${(lastDeviationCalculation.progressPercentage * 100).toFixed(1)} %</p>`;
+            } else {
+                debugHtml += `<p><em>${lastDeviationCalculation.reason || 'Esperando datos de cálculo de progreso...'}</em></p>`;
+            }
+            debugHtml += `<hr>`;
+
             const startPointDebug = trackingState.activeLegPoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
             let isWaitingAtStartPointDebug = false;
             if (startPointDebug && lastKnownPosition && currentSegmentStartIndex === 0 && (latestDeviationMillis || 0) > 0) {
@@ -1342,9 +1451,9 @@
                     isWaitingAtStartPointDebug = true;
                 }
             }
+            debugHtml += `<h4>Detalles por Parada</h4>`
             debugHtml += `<p><strong>Esperando en P. Inicio (lógica):</strong> ${isWaitingAtStartPointDebug}</p>`;
-            debugHtml += `<hr>`;
-
+            
             const displayPoints = trackingState.activeLegPoints.filter(p => p.pointCategory !== 'waypoint');
             if (displayPoints.length === 0) {
                 debugHtml += "<p>No hay puntos de parada para mostrar detalles.</p>";
@@ -1354,41 +1463,36 @@
 
             displayPoints.forEach(point => {
                 const pointIndexInFullPath = trackingState.activeLegPoints.findIndex(p => p.id === point.id);
-                const isPassed = pointIndexInFullPath < currentSegmentStartIndex || (pointIndexInFullPath === currentSegmentStartIndex && point.pointCategory === 'lineEndpoint' && point.isStartPoint);
+                const isPassed = pointIndexInFullPath <= currentSegmentStartIndex;
 
-
-                debugHtml += `<h5>Punto: ${point.name} (ID: ${point.id.slice(-4)})</h5>`;
-                debugHtml += `<p style="margin-left: 10px;">Pasado: ${isPassed}</p>`;
+                debugHtml += `<h5>Punto: ${point.name} (Pasado: ${isPassed})</h5>`;
                 
                 if (point.effectiveScheduledTime) {
                     const scheduledMillis = new Date(point.effectiveScheduledTime).getTime();
-                    debugHtml += `<p style="margin-left: 10px;">Hora Prog. (ms): ${scheduledMillis} (${formatTime(point.effectiveScheduledTime, false)})</p>`;
+                    debugHtml += `<p style="margin-left: 10px;">Hora Prog.: ${formatTime(point.effectiveScheduledTime, false)}</p>`;
 
                     if (!isPassed) {
                         const timeRemainingMillis = scheduledMillis - nowMillis;
-                        debugHtml += `<p style="margin-left: 10px;">Tiempo Rest. Prog. (ms): ${timeRemainingMillis} (${formatMillisToMMSS(timeRemainingMillis)})</p>`;
+                        debugHtml += `<p style="margin-left: 10px;">T. Rest. Prog.: ${formatMillisToMMSS(timeRemainingMillis)}</p>`;
                         
                         let etaMillisDebug;
                         let reason = "";
 
                         if (isWaitingAtStartPointDebug && deviationMillisForCalc > 0) {
                              etaMillisDebug = timeRemainingMillis;
-                             reason = `<em>Caso: Esperando en P.Inicio (adelantado). ETA = Tiempo Rest. Prog.</em>`;
+                             reason = `<em>Caso: Esperando en P.Inicio (adelantado). ETA = T. Rest. Prog.</em>`;
                         } else {
                             etaMillisDebug = timeRemainingMillis - deviationMillisForCalc;
-                            reason = `<em>Caso: Normal. ETA = Tiempo Rest. Prog. - Desvío (${formatMillisToMMSS(deviationMillisForCalc)})</em>`;
+                            reason = `<em>Caso: Normal. ETA = T. Rest. Prog. - Desvío</em>`;
                         }
                         debugHtml += `<p style="margin-left: 10px;">${reason}</p>`;
 
-                        if (etaMillisDebug < 0) {
-                            etaMillisDebug = 0;
-                        }
-                        debugHtml += `<p style="margin-left: 10px; font-weight: bold;">ETA Calculado (ms): ${etaMillisDebug} (${formatMillisToMMSS(etaMillisDebug)})</p>`;
+                        if (etaMillisDebug < 0) etaMillisDebug = 0;
+                        debugHtml += `<p style="margin-left: 10px; font-weight: bold;">ETA Calculado: ${formatMillisToMMSS(etaMillisDebug)}</p>`;
                     }
                 } else {
                     debugHtml += `<p style="margin-left: 10px;">Sin Hora Prog. Efectiva</p>`;
                 }
-                debugHtml += `<hr>`;
             });
 
             debugPanel.innerHTML = debugHtml;
