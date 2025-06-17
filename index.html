@@ -133,7 +133,7 @@
             background-color: #0d1117;
             border-bottom: 1px solid #30363d;
         }
-        #trackingDashboard > div { text-align: center; }
+        #trackingDashboard > div:not(#etaDebugPanel) { text-align: center; } /* Exclude debug panel from center align */
         #trackingInfoDisplay { font-size: 1.1em; font-weight: bold; margin-bottom: 10px; }
         #timeDeviation { font-size: 3.5em; font-weight: bold; margin: 5px 0 15px 0; }
         #trackingDetails { display: flex; justify-content: space-around; font-size: 1em; }
@@ -199,6 +199,34 @@
         .popup-form-field label { font-size: 0.9em; font-weight: 500; }
         .popup-form-field input { width: 100%; box-sizing: border-box; }
         .popup-actions { margin-top: 15px; text-align: right; }
+
+        /* NUEVO: Estilos para el panel de debug ETA */
+        #etaDebugPanel {
+            background-color: #161b22; /* Slightly different from accordion content for distinction */
+            padding: 10px;
+            margin: 10px 0px; /* Adjusted margin */
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            font-size: 0.85em; /* Slightly larger for readability */
+            text-align: left;
+            max-height: 200px; /* Increased max-height */
+            overflow-y: auto;
+        }
+        #etaDebugPanel h4, #etaDebugPanel h5 {
+            color: #58a6ff; /* A lighter blue for headers */
+            margin-top: 5px;
+            margin-bottom: 5px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #30363d;
+        }
+        #etaDebugPanel p {
+            margin: 3px 0;
+            line-height: 1.4;
+        }
+        #etaDebugPanel hr {
+             border-color: #30363d; margin: 8px 0;
+        }
+
     </style>
 </head>
 <body>
@@ -232,6 +260,12 @@
                 <div id="trackingStopsList">
                     <!-- El contenido se generará con JavaScript -->
                 </div>
+            </div>
+
+            <!-- NUEVO: Botón y panel de Debug ETA -->
+            <button id="toggleEtaDebugBtn" onclick="toggleEtaDebug()" class="btn-info btn-sm btn-block" style="margin-top: 15px;">🐛 Debug ETA</button>
+            <div id="etaDebugPanel" style="display: none;">
+                <!-- El contenido de debug se generará con JavaScript -->
             </div>
         </div>
 
@@ -306,6 +340,7 @@
         // NUEVAS VARIABLES PARA SEGUIMIENTO MEJORADO
         let deviationDisplayIntervalId = null; // Para actualizar la UI del desvío
         let latestDeviationMillis = null;    // Para almacenar el último cálculo de desvío
+        let isEtaDebugVisible = false; // NUEVO: Para el panel de debug ETA
 
         const CACHE_PREFIX = 'smartMovePro_unidir_simple_route_';
         const ROUTE_QUEUE_CACHE_KEY = 'smartMovePro_unidir_simple_routeQueue';
@@ -768,6 +803,9 @@
             highlightNextStopInList();
             updateManualNavButtons();
             updateTrackingStopsList();
+            if (isEtaDebugVisible) { // NUEVO: Actualizar debug si está visible
+                updateEtaDebugInfo();
+            }
         }
 
         function stopTracking(completedNaturally = false, reason = "") {
@@ -778,6 +816,16 @@
             document.getElementById('mainControlsContainer').style.display = 'block';
             document.getElementById('trackingDashboard').style.display = 'none';
             document.getElementById('trackingStopsList').innerHTML = ''; // Limpiar la lista de ETAs
+
+            // NUEVO: Resetear panel de debug ETA
+            if (isEtaDebugVisible) {
+                const debugPanel = document.getElementById('etaDebugPanel');
+                const debugBtn = document.getElementById('toggleEtaDebugBtn');
+                isEtaDebugVisible = false;
+                if(debugPanel) debugPanel.style.display = 'none';
+                if(debugPanel) debugPanel.innerHTML = '';
+                if(debugBtn) debugBtn.textContent = '🐛 Debug ETA';
+            }
 
             if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
 
@@ -1059,6 +1107,9 @@
                 highlightNextStopInList(); 
                 updateManualNavButtons();
                 updateTrackingStopsList();
+                if (isEtaDebugVisible) { // NUEVO: Actualizar debug si está visible
+                    updateEtaDebugInfo();
+                }
             }
         }
         function advanceToNextActivePoint() {
@@ -1093,6 +1144,7 @@
 
             if (lastKnownPosition) calculateTimeDeviation(lastKnownPosition);
             highlightNextStopInList(); updateManualNavButtons(); updateTrackingStopsList();
+            if (isEtaDebugVisible) updateEtaDebugInfo(); // NUEVO
         }
         function goToNextActivePoint() {
             if (!isTracking || !trackingState.activeLegPoints || currentSegmentStartIndex >= trackingState.activeLegPoints.length -1 ) return;
@@ -1102,6 +1154,7 @@
                 highlightNextStopInList(); 
                 updateManualNavButtons(); 
                 updateTrackingStopsList();
+                if (isEtaDebugVisible) updateEtaDebugInfo(); // NUEVO
             }
         }
         function calculateTimeDeviation(currentUserGeoPosition) {
@@ -1177,10 +1230,8 @@
             const nowMillis = new Date().getTime();
             const nextStopInfo = getNextDisplayableStop();
 
-            // --- Lógica para determinar si el vehículo está esperando en el punto de inicio ---
             const startPoint = trackingState.activeLegPoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
             let isWaitingAtStartPoint = false;
-            // Condiciones: En seguimiento, con posición, en el primer segmento, adelantado, y físicamente en el punto de inicio.
             if (startPoint && lastKnownPosition && currentSegmentStartIndex === 0 && (latestDeviationMillis || 0) > 0) {
                 const userLatLng = L.latLng(lastKnownPosition.coords.latitude, lastKnownPosition.coords.longitude);
                 const startPointLatLng = L.latLng(startPoint.lat, startPoint.lng);
@@ -1204,18 +1255,13 @@
                     let etaMillis;
 
                     if (isWaitingAtStartPoint && deviationMillis > 0) {
-                        // CASO ESPECIAL: Adelantado y esperando en el P. de Inicio ("Hacer Hora").
-                        // El ETA es el tiempo que falta hasta la hora programada. No se resta el adelanto.
                         etaMillis = timeRemainingMillis;
                     } else {
-                        // CASO NORMAL: El ETA es el tiempo restante ajustado por la desviación.
-                        // Esto correctamente AUMENTA el ETA si está atrasado (dev < 0) 
-                        // y DISMINUYE el ETA si está adelantado (dev > 0).
                         etaMillis = timeRemainingMillis - deviationMillis;
                     }
 
                     if (etaMillis < 0) {
-                        etaMillis = 0; // El ETA no puede ser negativo.
+                        etaMillis = 0; 
                     }
                     
                     if (etaMillis < 60000) {
@@ -1241,6 +1287,113 @@
             });
             listDiv.innerHTML = html;
         }
+
+        // --- NUEVAS FUNCIONES PARA DEBUG ETA ---
+        function formatMillisToMMSS(millis) {
+            if (millis === null || typeof millis === 'undefined' || isNaN(millis)) return "N/A";
+            const totalSeconds = Math.floor(Math.abs(millis) / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            const sign = millis < 0 ? "-" : "";
+            return `${sign}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        window.toggleEtaDebug = function() {
+            isEtaDebugVisible = !isEtaDebugVisible;
+            const debugPanel = document.getElementById('etaDebugPanel');
+            const debugBtn = document.getElementById('toggleEtaDebugBtn');
+            if (isEtaDebugVisible) {
+                debugPanel.style.display = 'block';
+                debugBtn.textContent = '🐛 Ocultar Debug ETA';
+                debugBtn.classList.remove('btn-info');
+                debugBtn.classList.add('btn-secondary');
+                updateEtaDebugInfo(); 
+            } else {
+                debugPanel.style.display = 'none';
+                debugBtn.textContent = '🐛 Debug ETA';
+                debugBtn.classList.remove('btn-secondary');
+                debugBtn.classList.add('btn-info');
+                debugPanel.innerHTML = ''; 
+            }
+        }
+
+        function updateEtaDebugInfo() {
+            if (!isEtaDebugVisible || !isTracking) {
+                const debugPanel = document.getElementById('etaDebugPanel');
+                if(debugPanel) debugPanel.innerHTML = '<p>El seguimiento no está activo o el debug está oculto.</p>';
+                return;
+            }
+
+            const debugPanel = document.getElementById('etaDebugPanel');
+            let debugHtml = `<h4>Detalles Cálculo ETA</h4>`;
+            const nowMillis = new Date().getTime();
+            const deviationMillisForCalc = latestDeviationMillis === null ? 0 : latestDeviationMillis; // Use 0 if null for calc, but display actual
+
+            debugHtml += `<p><strong>Hora Actual (ms):</strong> ${nowMillis}</p>`;
+            debugHtml += `<p><strong>Desvío Actual (ms):</strong> ${latestDeviationMillis === null ? 'N/A (calculando)' : latestDeviationMillis} (${formatMillisToMMSS(latestDeviationMillis)})</p>`;
+            debugHtml += `<p><strong>Índice Segmento Actual:</strong> ${currentSegmentStartIndex}</p>`;
+            
+            const startPointDebug = trackingState.activeLegPoints.find(p => p.pointCategory === 'lineEndpoint' && p.isStartPoint);
+            let isWaitingAtStartPointDebug = false;
+            if (startPointDebug && lastKnownPosition && currentSegmentStartIndex === 0 && (latestDeviationMillis || 0) > 0) {
+                const userLatLng = L.latLng(lastKnownPosition.coords.latitude, lastKnownPosition.coords.longitude);
+                const startPointLatLng = L.latLng(startPointDebug.lat, startPointDebug.lng);
+                if (userLatLng.distanceTo(startPointLatLng) < currentStopRadius) {
+                    isWaitingAtStartPointDebug = true;
+                }
+            }
+            debugHtml += `<p><strong>Esperando en P. Inicio (lógica):</strong> ${isWaitingAtStartPointDebug}</p>`;
+            debugHtml += `<hr>`;
+
+            const displayPoints = trackingState.activeLegPoints.filter(p => p.pointCategory !== 'waypoint');
+            if (displayPoints.length === 0) {
+                debugHtml += "<p>No hay puntos de parada para mostrar detalles.</p>";
+                debugPanel.innerHTML = debugHtml;
+                return;
+            }
+
+            displayPoints.forEach(point => {
+                const pointIndexInFullPath = trackingState.activeLegPoints.findIndex(p => p.id === point.id);
+                const isPassed = pointIndexInFullPath < currentSegmentStartIndex || (pointIndexInFullPath === currentSegmentStartIndex && point.pointCategory === 'lineEndpoint' && point.isStartPoint);
+
+
+                debugHtml += `<h5>Punto: ${point.name} (ID: ${point.id.slice(-4)})</h5>`;
+                debugHtml += `<p style="margin-left: 10px;">Pasado: ${isPassed}</p>`;
+                
+                if (point.effectiveScheduledTime) {
+                    const scheduledMillis = new Date(point.effectiveScheduledTime).getTime();
+                    debugHtml += `<p style="margin-left: 10px;">Hora Prog. (ms): ${scheduledMillis} (${formatTime(point.effectiveScheduledTime, false)})</p>`;
+
+                    if (!isPassed) {
+                        const timeRemainingMillis = scheduledMillis - nowMillis;
+                        debugHtml += `<p style="margin-left: 10px;">Tiempo Rest. Prog. (ms): ${timeRemainingMillis} (${formatMillisToMMSS(timeRemainingMillis)})</p>`;
+                        
+                        let etaMillisDebug;
+                        let reason = "";
+
+                        if (isWaitingAtStartPointDebug && deviationMillisForCalc > 0) {
+                             etaMillisDebug = timeRemainingMillis;
+                             reason = `<em>Caso: Esperando en P.Inicio (adelantado). ETA = Tiempo Rest. Prog.</em>`;
+                        } else {
+                            etaMillisDebug = timeRemainingMillis - deviationMillisForCalc;
+                            reason = `<em>Caso: Normal. ETA = Tiempo Rest. Prog. - Desvío (${formatMillisToMMSS(deviationMillisForCalc)})</em>`;
+                        }
+                        debugHtml += `<p style="margin-left: 10px;">${reason}</p>`;
+
+                        if (etaMillisDebug < 0) {
+                            etaMillisDebug = 0;
+                        }
+                        debugHtml += `<p style="margin-left: 10px; font-weight: bold;">ETA Calculado (ms): ${etaMillisDebug} (${formatMillisToMMSS(etaMillisDebug)})</p>`;
+                    }
+                } else {
+                    debugHtml += `<p style="margin-left: 10px;">Sin Hora Prog. Efectiva</p>`;
+                }
+                debugHtml += `<hr>`;
+            });
+
+            debugPanel.innerHTML = debugHtml;
+        }
+
 
         function handleGeolocationError(error) {
             console.error("Error de geolocalización: ", error); alert(`Error de geolocalización: ${error.message}.`);
