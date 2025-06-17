@@ -1,6 +1,6 @@
 'use strict';
 
-// --- VARIABLES GLOBALES ---
+// --- VARIABLES GLOBALS ---
 let map;
 let routePoints = [];
 let routeLineEdit;
