@@ -44,8 +44,6 @@ let driverMarkers = {}; // { driverUid: marker }
     appId: "1:705564619607:web:9fe247de850dda92770412"
   };
 
-};
-
 
 // --- INICIALIZACIÓN Y LÓGICA DE PWA ---
 document.addEventListener('DOMContentLoaded', () => {
