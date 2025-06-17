@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// --- LÓGICA DE LOGIN Y FIREBASE (VERSIÓN SEGURA) ---
+// --- LÓGICA DE LOGIN Y FIREBASE SEGURA) ---
 
 function initFirebase() {
     try {
