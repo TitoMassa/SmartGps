@@ -34,14 +34,26 @@ let driverMarkers = {}; // { driverUid: marker }
 // PEGA AQUÍ LA CONFIGURACIÓN DE TU PROYECTO FIREBASE
 // Esta configuración es segura para repositorios públicos SI Y SOLO SI
 // has configurado las Reglas de Seguridad en tu base de datos.
-const firebaseConfig = {
-    apiKey: "TU_API_KEY",
-    authDomain: "TU_AUTH_DOMAIN",
-    databaseURL: "TU_DATABASE_URL",
-    projectId: "TU_PROJECT_ID",
-    storageBucket: "TU_STORAGE_BUCKET",
-    messagingSenderId: "TU_MESSAGING_SENDER_ID",
-    appId: "TU_APP_ID"
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyC4aheVwX71cfdxHxX5SjdBqV6C8hMZaso",
+    authDomain: "smart-move-pro.firebaseapp.com",
+    projectId: "smart-move-pro",
+    storageBucket: "smart-move-pro.firebasestorage.app",
+    messagingSenderId: "705564619607",
+    appId: "1:705564619607:web:9fe247de850dda92770412"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+</script>
+
 };
 
 
