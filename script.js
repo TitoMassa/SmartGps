@@ -34,15 +34,11 @@ let driverMarkers = {}; // { driverUid: marker }
 // PEGA AQUÍ LA CONFIGURACIÓN DE TU PROYECTO FIREBASE
 // Esta configuración es segura para repositorios públicos SI Y SOLO SI
 // has configurado las Reglas de Seguridad en tu base de datos.
+// La configuración de Firebase ahora se importa desde un archivo externo
+// que es generado por GitHub Actions durante el despliegue.
+import { firebaseConfig } from './firebase-config.js';
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyC4aheVwX71cfdxHxX5SjdBqV6C8hMZaso",
-    authDomain: "smart-move-pro.firebaseapp.com",
-    projectId: "smart-move-pro",
-    storageBucket: "smart-move-pro.firebasestorage.app",
-    messagingSenderId: "705564619607",
-    appId: "1:705564619607:web:9fe247de850dda92770412"
-  };
+// --- INICIALIZACIÓN Y LÓGICA DE PWA ---
 
 
 // --- INICIALIZACIÓN Y LÓGICA DE PWA ---
