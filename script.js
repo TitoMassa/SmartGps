@@ -32,7 +32,7 @@ let driverMarkers = {}; // { driverUid: marker }
 
 
 // --- CONFIGURACIÓN DE FIREBASE (CORREGIDA) ---
-// Así es como debe verse el objeto de configuración.
+// Este es el formato correcto: solo el objeto JavaScript.
 const firebaseConfig = {
     apiKey: "AIzaSyC4aheVwX71cfdxHxX5SjdBqV6C8hMZaso",
     authDomain: "smart-move-pro.firebaseapp.com",
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initFirebase() {
     try {
-        if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "TU_API_KEY") {
+        if (!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("TU_")) {
              throw new Error("Configuración de Firebase no encontrada. Por favor, completa el objeto 'firebaseConfig' en script.js.");
         }
         firebase.initializeApp(firebaseConfig);
@@ -73,7 +73,6 @@ function initFirebase() {
         console.log("Firebase inicializado correctamente.");
     } catch (e) {
         console.error(e.message);
-        // Ocultar la app y mostrar un error grande
         document.getElementById('appContainer').style.display = 'none';
         const loginModal = document.getElementById('loginModal');
         if (loginModal) {
@@ -84,10 +83,10 @@ function initFirebase() {
 }
 
 function checkLoginState() {
-    if (!auth) return; // No continuar si Firebase no se inicializó
+    if (!auth) return;
     
     auth.onAuthStateChanged(user => {
-        if (user) { // El usuario ya tiene una sesión anónima
+        if (user) {
             const driverName = sessionStorage.getItem('smartMovePro_driverName');
             if (driverName) {
                 currentUser = { name: driverName, uid: user.uid };
@@ -96,7 +95,7 @@ function checkLoginState() {
             } else {
                 showLoginPrompt(user.uid);
             }
-        } else { // No hay sesión anónima, la creamos
+        } else {
             auth.signInAnonymously().catch(error => {
                 console.error("Error al iniciar sesión anónimamente:", error);
                 alert("No se pudo conectar al servicio. Por favor, recarga la página.");
@@ -137,7 +136,7 @@ function startAppForUser() {
     userStatusRef.onDisconnect().update({ isOnline: false, lastSeen: firebase.database.ServerValue.TIMESTAMP });
     userStatusRef.update({ isOnline: true, name: currentUser.name });
 
-    loadSavedRoutesLists(); 
+    loadSavedRoutesLists();
     listenForDriverUpdates();
     updateStopsList();
     updateManualNavButtons();
@@ -151,10 +150,8 @@ function listenForDriverUpdates() {
     const driversRef = database.ref('/drivers');
     driversRef.on('value', (snapshot) => {
         const driversData = snapshot.val();
-        if (driversData) {
-            updateDriverStatusUI(driversData);
-            updateDriverMarkers(driversData);
-        }
+        updateDriverStatusUI(driversData || {});
+        updateDriverMarkers(driversData || {});
     });
 }
 
@@ -183,7 +180,7 @@ function updateDriverStatusUI(driversData) {
 
         const html = `
             <div class="driver-status-item ${statusClass}">
-                <p class="driver-name">${driver.name} ${uid === currentUser.uid ? '(Tú)' : ''}</p>
+                <p class="driver-name">${driver.name} ${currentUser && uid === currentUser.uid ? '(Tú)' : ''}</p>
                 ${driver.isTracking ? `
                     <p>En ruta: <strong>${driver.currentRoute || 'N/A'}</strong></p>
                     <div class="driver-details">
@@ -244,6 +241,7 @@ function handlePositionUpdate(position) {
     updateMyStatusInFirebase({ location: { lat: latitude, lng: longitude } });
     
     if (!isTracking || !trackingState.activeLegPoints || trackingState.activeLegPoints.length === 0) return;
+
     const manualNav = document.getElementById('manualStopNav').checked;
     if (!manualNav) {
         if (currentSegmentStartIndex >= trackingState.activeLegPoints.length - 1) { handleEndOfRoute(); if (!isTracking) return; }
@@ -526,14 +524,14 @@ function loadSavedRoutesLists() {
     updateRouteQueueDisplay();
 }
 
-// --- EL RESTO DE FUNCIONES (SIN CAMBIOS IMPORTANTES) ---
-// (Aquí irían todas las demás funciones que no fueron modificadas para Firebase)
+
+// --- FUNCIONES RESTANTES (SIN CAMBIOS) ---
 
 function toggleFullscreen() {
     const elem = document.documentElement;
     const fsBtn = document.getElementById('fullscreenBtn');
 
-    if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+    if (!document.fullscreenElement) {
         if (elem.requestFullscreen) elem.requestFullscreen();
         else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
         else if (elem.mozRequestFullScreen) elem.mozRequestFullScreen();
@@ -622,7 +620,6 @@ function initMap() {
         });
     });
     redrawRouteLine();
-    // updateStopsList(); // Esta se llama desde startAppForUser
 }
 
 function onMapClick(e) {
